@@ -1,0 +1,62 @@
+{
+  "name": "gherkin-step-navigator",
+  "displayName": "Gherkin Step Navigator",
+  "description": "Navigate from Gherkin feature steps to code.",
+  "icon": "gherkin-step-navigator-icon.png",
+  "version": "1.0.5",
+  "publisher": "dbriskin",
+  "engines": {
+    "vscode": "^1.97.0"
+  },
+  "main": "./out/extension.js",
+  "activationEvents": [
+    "onLanguage:gherkin"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/danny-briskin/gherkin-step-navigator.git"
+  },
+  "contributes": {
+    "languages": [
+      {
+        "id": "gherkin",
+        "extensions": [
+          ".feature"
+        ],
+        "aliases": [
+          "Gherkin"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "gherkin",
+        "scopeName": "source.gherkin",
+        "path": "./syntaxes/feature.tmLanguage.json"
+      }
+    ],
+    "configuration": {
+      "title": "Gherkin Step Navigator Settings",
+      "properties": {
+        "gherkinStepNavigator.stepFilePattern": {
+          "type": "array",
+          "default": [
+            "**/*Steps.cs"
+          ],
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.97.0",
+    "typescript": "^5.7.3"
+  }
+}
