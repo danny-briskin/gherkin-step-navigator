@@ -2,13 +2,13 @@
   "name": "gherkin-step-navigator",
   "displayName": "Gherkin Step Navigator",
   "description": "Navigate from Gherkin feature steps to code.",
-  "icon": "gherkin-step-navigator-icon.png",
-  "version": "1.0.5",
-  "publisher": "dbriskin",
+  "icon": "icon.png",
+  "version": "1.0.0",
+  "publisher": "Danny Briskin",
   "engines": {
     "vscode": "^1.97.0"
   },
-  "main": "./out/extension.js",
+  "main": "./out/main.js",
   "activationEvents": [
     "onLanguage:gherkin"
   ],
@@ -53,10 +53,21 @@
   },
   "scripts": {
     "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./"
+    "watch": "tsc -watch -p ./",
+    "vscode:prepublish": "npm run bundle",
+    "bundle": "esbuild ./src/extension.ts --bundle --outfile=out/main.js --external:vscode --format=cjs --platform=node --minify"
   },
   "devDependencies": {
+    "@types/glob": "^8.1.0",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^25.3.1",
     "@types/vscode": "^1.97.0",
+    "esbuild": "^0.27.3",
+    "glob": "^13.0.6",
     "typescript": "^5.7.3"
+  },
+  "dependencies": {
+    "glob": "^10.0.0",
+    "mocha": "^11.7.5"
   }
 }
