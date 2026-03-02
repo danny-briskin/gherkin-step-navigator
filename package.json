@@ -52,11 +52,8 @@
     }
   },
   "scripts": {
-    "compile": "npm run bundle-dev && npm run copy-fixtures",
-    "watch": "esbuild ./src/extension.ts --bundle --outfile=out/main.js --external:vscode --format=cjs --platform=node --watch",
-    "vscode:prepublish": "npm run bundle",
-    "bundle": "esbuild ./src/extension.ts --bundle --outfile=out/main.js --external:vscode --format=cjs --platform=node --minify",
-    "bundle-dev": "esbuild ./src/extension.ts --bundle --outfile=out/main.js --external:vscode --format=cjs --platform=node",
+    "bundle": "esbuild ./src/extension.ts --bundle --outfile=out/main.js --external:vscode --format=cjs --platform=node",
+    "compile": "npm run bundle && tsc -p ./ && npm run copy-fixtures",
     "copy-fixtures": "copyfiles -u 1 \"src/test/fixtures/**/*\" out/",
     "pretest": "npm run compile"
   },

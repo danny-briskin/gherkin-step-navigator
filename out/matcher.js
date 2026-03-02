@@ -41,10 +41,9 @@ class StepMatcher {
         if (this.cachedKeywords !== null)
             return this.cachedKeywords;
         try {
-            // Try multiple possible paths for the grammar file
             const possiblePaths = [
                 path.join(extensionPath, 'syntaxes', 'feature.tmLanguage.json'),
-                path.join(extensionPath, '..', 'syntaxes', 'feature.tmLanguage.json'), // If running from 'out'
+                path.join(extensionPath, '..', 'syntaxes', 'feature.tmLanguage.json'),
                 path.join(__dirname, '..', 'syntaxes', 'feature.tmLanguage.json')
             ];
             let grammarPath = "";
@@ -74,47 +73,58 @@ class StepMatcher {
                     });
                 });
                 const uniqueKeywords = [...new Set(allWords)].filter(k => k.length > 0);
-                // Re-apply the escape logic to handle apostrophes in French
                 this.cachedKeywords = uniqueKeywords
                     .map(k => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
                     .join('|');
-                console.log("DEBUG - Successfully loaded keywords from grammar.");
                 return this.cachedKeywords;
             }
         }
         catch (err) {
-            console.error("DEBUG - Keyword Extraction Failed:", err);
+            // Log errors to a dedicated channel if necessary, or fail silently
         }
-        // UPDATED FALLBACK: Include common languages so tests don't break if file is missing
-        console.warn("DEBUG - Using hardcoded fallback keywords!");
         return "Given|When|Then|And|But|Angenommen|Étant donné|Et|Und";
     }
+    // matcher.ts
     static extractRegex(line, extensionPath) {
+        const trimmed = line.trim();
+        // Ensure the line actually starts with the decorator/attribute
+        if (!trimmed.startsWith('@') && !trimmed.startsWith('['))
+            return null;
         try {
             const keywords = this.getKeywords(extensionPath);
-            const allKeywords = `${keywords}|StepDefinition`;
-            // Flexible pattern for C# attributes
-            const pattern = `\\[\\s*(?:${allKeywords})\\s*\\(\\s*@?"(.*)"\\s*\\)\\s*\\]`;
-            // Use a try-catch specifically for the RegExp constructor
+            const allKeywords = `${keywords}|StepDefinition|given|when|then|and|but`;
+            // Added ^ to the start of the match attempt to avoid middle-of-line matches
+            const pattern = `(?:@|\\s*\\[\\s*)(?:${allKeywords})\\s*(?:\\(|\\s*=\\s*)\\s*@?['"](.*)['"]\\s*\\)?\\s*\\]?`;
             const regex = new RegExp(pattern, 'i');
-            const match = line.match(regex);
-            return match ? match[1] : null;
+            const match = trimmed.match(regex);
+            if (match && match[1]) {
+                // Filter out the regex explanation string if it somehow gets caught
+                if (match[1].includes('...")'))
+                    return null;
+                return match[1];
+            }
         }
         catch (e) {
-            console.error("DEBUG - Regex match failed:", e);
             return null;
         }
+        return null;
     }
-    static isMatch(stepText, csharpPattern, extensionPath) {
+    static isMatch(stepText, pattern, extensionPath) {
         try {
             const keywords = this.getKeywords(extensionPath);
             const keywordRegex = new RegExp(`^\\s*(?:${keywords})\\s+`, 'i');
             if (!keywordRegex.test(stepText))
                 return false;
             const cleanStep = stepText.replace(keywordRegex, '').trim();
-            // Normalize C# verbatim quotes ("") to standard quotes (")
-            const cleanPattern = csharpPattern.replace(/""/g, '"').trim();
-            const regex = new RegExp(`^${cleanPattern}$`, 'i');
+            // CUCUMBER/BEHAVE NORMALIZATION:
+            // Convert {int}, {string}, {word} to generic regex wildcards
+            let convertedPattern = pattern
+                .replace(/\{int\}/g, '\\d+')
+                .replace(/\{float\}/g, '[\\d\\.]+')
+                .replace(/\{word\}/g, '[^\\s]+')
+                .replace(/\{string\}/g, '.*')
+                .replace(/\{count:d\}/g, '\\d+'); // Python specific
+            const regex = new RegExp(`^${convertedPattern}$`, 'i');
             return regex.test(cleanStep);
         }
         catch (e) {

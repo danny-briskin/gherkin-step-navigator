@@ -8,7 +8,7 @@ suite('Extension Integration Tests', () => {
 
         const extension = vscode.extensions.getExtension('danny-briskin.gherkin-step-navigator');
         const workspacePath = path.join(extension!.extensionPath, 'out', 'test', 'fixtures');
-        const featureUri = vscode.Uri.file(path.join(workspacePath, 'test.feature'));
+        const featureUri = vscode.Uri.file(path.join(workspacePath, 'csharp_test.feature'));
 
         const document = await vscode.workspace.openTextDocument(featureUri);
         await vscode.window.showTextDocument(document);
@@ -16,7 +16,7 @@ suite('Extension Integration Tests', () => {
         // Give the indexer more time to complete the manual scan
         await new Promise(resolve => setTimeout(resolve, 1000));
 
-        const position = new vscode.Position(2, 15); // Ensure this line in test.feature is a valid step
+        const position = new vscode.Position(2, 15); // Ensure this line in csharp.test.feature is a valid step
         const locations = await vscode.commands.executeCommand<vscode.Location[]>(
             'vscode.executeDefinitionProvider',
             document.uri,

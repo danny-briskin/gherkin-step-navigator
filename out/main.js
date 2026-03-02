@@ -86,26 +86,33 @@ var StepMatcher = class {
     }
     return "Given|When|Then|And|But|Angenommen|\xC9tant donn\xE9|Et|Und";
   }
+  // matcher.ts
   static extractRegex(line, extensionPath) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("@") && !trimmed.startsWith("[")) return null;
     try {
       const keywords = this.getKeywords(extensionPath);
-      const allKeywords = `${keywords}|StepDefinition`;
-      const pattern = `\\[\\s*(?:${allKeywords})\\s*\\(\\s*@?"(.*)"\\s*\\)\\s*\\]`;
+      const allKeywords = `${keywords}|StepDefinition|given|when|then|and|but`;
+      const pattern = `(?:@|\\s*\\[\\s*)(?:${allKeywords})\\s*(?:\\(|\\s*=\\s*)\\s*@?['"](.*)['"]\\s*\\)?\\s*\\]?`;
       const regex = new RegExp(pattern, "i");
-      const match = line.match(regex);
-      return match ? match[1] : null;
+      const match = trimmed.match(regex);
+      if (match && match[1]) {
+        if (match[1].includes('...")')) return null;
+        return match[1];
+      }
     } catch (e) {
       return null;
     }
+    return null;
   }
-  static isMatch(stepText, csharpPattern, extensionPath) {
+  static isMatch(stepText, pattern, extensionPath) {
     try {
       const keywords = this.getKeywords(extensionPath);
       const keywordRegex = new RegExp(`^\\s*(?:${keywords})\\s+`, "i");
       if (!keywordRegex.test(stepText)) return false;
       const cleanStep = stepText.replace(keywordRegex, "").trim();
-      const cleanPattern = csharpPattern.replace(/""/g, '"').trim();
-      const regex = new RegExp(`^${cleanPattern}$`, "i");
+      let convertedPattern = pattern.replace(/\{int\}/g, "\\d+").replace(/\{float\}/g, "[\\d\\.]+").replace(/\{word\}/g, "[^\\s]+").replace(/\{string\}/g, ".*").replace(/\{count:d\}/g, "\\d+");
+      const regex = new RegExp(`^${convertedPattern}$`, "i");
       return regex.test(cleanStep);
     } catch (e) {
       return false;
@@ -137,37 +144,44 @@ function activate(context) {
 }
 async function findStepDefinitions(context) {
   let files = [];
-  const workspaceFiles = await vscode.workspace.findFiles("**/*.cs");
-  files = [...workspaceFiles];
+  const config = vscode.workspace.getConfiguration("gherkinStepNavigator");
+  const patterns = config.get("stepFilePattern") || ["**/*"];
+  for (const pattern of patterns) {
+    const glob = pattern.includes(".") ? pattern : `${pattern.replace(/\/$/, "")}/**/*`;
+    const matched = await vscode.workspace.findFiles(glob, "**/node_modules/**");
+    files = files.concat(matched);
+  }
   if (files.length === 0) {
-    const getFiles = (dir) => {
-      if (!fs2.existsSync(dir)) return [];
+    const getAllFiles = (dir) => {
       let results = [];
+      if (!fs2.existsSync(dir)) return results;
       const list = fs2.readdirSync(dir);
-      for (let file of list) {
+      for (const file of list) {
         const fullPath = path2.join(dir, file);
         if (fullPath.includes("node_modules")) continue;
         if (fs2.statSync(fullPath).isDirectory()) {
-          results = results.concat(getFiles(fullPath));
-        } else if (fullPath.endsWith(".cs")) {
+          results = results.concat(getAllFiles(fullPath));
+        } else {
           results.push(fullPath);
         }
       }
       return results;
     };
-    const searchRoot = context.extensionPath;
-    const found = getFiles(searchRoot);
-    files = found.map((p) => vscode.Uri.file(p));
+    const all = getAllFiles(context.extensionPath);
+    files = all.map((p) => vscode.Uri.file(p));
   }
   const definitions = [];
-  for (const file of files) {
+  const uniquePaths = [...new Set(files.map((f) => f.fsPath))];
+  for (const filePath of uniquePaths) {
+    if (filePath.endsWith(".feature") || fs2.statSync(filePath).size > 5e5) continue;
     try {
-      const content = fs2.readFileSync(file.fsPath, "utf8");
-      const lines = content.split(/\r?\n/);
+      const buffer = fs2.readFileSync(filePath);
+      if (buffer.includes(0)) continue;
+      const lines = buffer.toString("utf8").split(/\r?\n/);
       lines.forEach((line, index) => {
         const pattern = StepMatcher.extractRegex(line, context.extensionPath);
         if (pattern) {
-          definitions.push({ pattern, line: index, file: file.fsPath });
+          definitions.push({ pattern, line: index, file: filePath });
         }
       });
     } catch (err) {
