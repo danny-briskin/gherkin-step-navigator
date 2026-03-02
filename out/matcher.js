@@ -37,35 +37,97 @@ exports.StepMatcher = void 0;
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
 class StepMatcher {
-    // Dynamically build the keyword list from your tmLanguage file
     static getKeywords(extensionPath) {
-        if (this.cachedKeywords)
+        if (this.cachedKeywords !== null)
             return this.cachedKeywords;
         try {
-            const grammarPath = path.join(extensionPath, 'syntaxes', 'feature.tmLanguage.json');
-            const grammar = JSON.parse(fs.readFileSync(grammarPath, 'utf8'));
-            // Extract the massive regex string from step_keyword.match
-            const rawMatch = grammar.repository.step_keyword.match;
-            // The keywords are in the first capture group: ^\s*(LIST_HERE):
-            const keywordList = rawMatch.match(/\((.*)\)/)[1];
-            this.cachedKeywords = keywordList;
-            return keywordList;
+            const possiblePaths = [
+                path.join(extensionPath, 'syntaxes', 'feature.tmLanguage.json'),
+                path.join(extensionPath, '..', 'syntaxes', 'feature.tmLanguage.json'),
+                path.join(__dirname, '..', 'syntaxes', 'feature.tmLanguage.json')
+            ];
+            let grammarPath = "";
+            for (const p of possiblePaths) {
+                if (fs.existsSync(p)) {
+                    grammarPath = p;
+                    break;
+                }
+            }
+            if (grammarPath) {
+                const content = fs.readFileSync(grammarPath, 'utf8');
+                const grammar = JSON.parse(content);
+                const repo = grammar.repository;
+                const keywordPatterns = [
+                    repo.step_keyword?.match,
+                    repo.and_keyword?.match,
+                    repo.when_keyword?.match,
+                    repo.then_keyword?.match,
+                    repo.given_keyword?.match
+                ].filter(Boolean);
+                const allWords = keywordPatterns.flatMap(pattern => {
+                    const match = pattern.match(/\((.*)\)/);
+                    if (!match)
+                        return [];
+                    return match[1].split('|').map(k => {
+                        return k.replace(/[\\^$*+?.()|[\]{}]/g, '').trim();
+                    });
+                });
+                const uniqueKeywords = [...new Set(allWords)].filter(k => k.length > 0);
+                this.cachedKeywords = uniqueKeywords
+                    .map(k => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+                    .join('|');
+                return this.cachedKeywords;
+            }
         }
-        catch (e) {
-            // Fallback to English if file reading fails
-            return "Given|When|Then|And|But";
+        catch (err) {
+            // Log errors to a dedicated channel if necessary, or fail silently
         }
+        return "Given|When|Then|And|But|Angenommen|Étant donné|Et|Und";
     }
-    static isMatch(stepText, csharpPattern, extensionPath) {
+    // matcher.ts
+    static extractRegex(line, extensionPath) {
+        const trimmed = line.trim();
+        // Ensure the line actually starts with the decorator/attribute
+        if (!trimmed.startsWith('@') && !trimmed.startsWith('['))
+            return null;
         try {
             const keywords = this.getKeywords(extensionPath);
-            // Create a regex that strips ANY valid Gherkin keyword from any language
-            const keywordRegex = new RegExp(`^\\s*(${keywords})\\s+`, 'i');
-            const cleanStep = stepText.replace(keywordRegex, '');
-            const regex = new RegExp(`^${csharpPattern}$`);
+            const allKeywords = `${keywords}|StepDefinition|given|when|then|and|but`;
+            // Added ^ to the start of the match attempt to avoid middle-of-line matches
+            const pattern = `(?:@|\\s*\\[\\s*)(?:${allKeywords})\\s*(?:\\(|\\s*=\\s*)\\s*@?['"](.*)['"]\\s*\\)?\\s*\\]?`;
+            const regex = new RegExp(pattern, 'i');
+            const match = trimmed.match(regex);
+            if (match && match[1]) {
+                // Filter out the regex explanation string if it somehow gets caught
+                if (match[1].includes('...")'))
+                    return null;
+                return match[1];
+            }
+        }
+        catch (e) {
+            return null;
+        }
+        return null;
+    }
+    static isMatch(stepText, pattern, extensionPath) {
+        try {
+            const keywords = this.getKeywords(extensionPath);
+            const keywordRegex = new RegExp(`^\\s*(?:${keywords})\\s+`, 'i');
+            if (!keywordRegex.test(stepText))
+                return false;
+            const cleanStep = stepText.replace(keywordRegex, '').trim();
+            // CUCUMBER/BEHAVE NORMALIZATION:
+            // Convert {int}, {string}, {word} to generic regex wildcards
+            let convertedPattern = pattern
+                .replace(/\{int\}/g, '\\d+')
+                .replace(/\{float\}/g, '[\\d\\.]+')
+                .replace(/\{word\}/g, '[^\\s]+')
+                .replace(/\{string\}/g, '.*')
+                .replace(/\{count:d\}/g, '\\d+'); // Python specific
+            const regex = new RegExp(`^${convertedPattern}$`, 'i');
             return regex.test(cleanStep);
         }
-        catch {
+        catch (e) {
             return false;
         }
     }

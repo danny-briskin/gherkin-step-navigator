@@ -1,37 +1,43 @@
 # <img src="./icon.png" width="50" height="50"> Gherkin Step Navigator
 
-🚀 **Instantly jump from Gherkin feature steps to their code implementations.**
+🚀 **Instantly jump from Gherkin feature steps to their code implementations across C#, Java, and Python.**
 
-Gherkin Step Navigator is a lightweight, high-performance extension that brings "Go to Definition" support to BDD (Behavior Driven Development) frameworks. While originally inspired by SpecFlow, this extension is designed to be framework-agnostic and works with any codebase using Gherkin syntax.
+Gherkin Step Navigator is a lightweight, high-performance VS Code extension that brings "Go to Definition" support to BDD (Behavior Driven Development) frameworks. It is designed to be framework-agnostic, working seamlessly with SpecFlow (C#), Cucumber (Java), Behave (Python), and more.
 
-## Features
 
-- **Go to Definition (F12):** Click on any step in a `.feature` file to jump directly to the matching C#, JavaScript, or Python step definition.
-- **Peek Definition:** Preview the code implementation without leaving the feature file.
-- **Scenario Outline Support:** Automatically handles variables like `<id>` or `<name>` within your steps.
-- **Multi-language Support:** Works with international Gherkin keywords (Given, When, Then, Dado, Quando, Então, etc.).
 
-## Extension Settings
+## 🌟 Key Features
 
-You can customize where the extension looks for step definitions. Go to `Settings` and search for `Gherkin Step Navigator`.
+- **Universal "Go to Definition" (F12):** Ctrl+Click any step in a `.feature` file to jump directly to the matching code implementation.
+- **Cross-Language Support:** Automatically detects and indexes:
+  - **C#:** `[Given(@"regex")]`
+  - **Java:** `@Given("regex")` or `@Given("Cucumber Expression")`
+  - **Python:** `@given('regex')`
+- **Smart Parameter Matching:** Handles Cucumber Expressions like `{int}`, `{string}`, and `{word}`, as well as Python-style `{count:d}`.
+- **Multi-language Gherkin:** Supports international keywords (Given, Quando, Étant donné, etc.) by reading directly from the Gherkin grammar.
+- **High Performance:** Built with an optimized local indexer that ignores binaries and handles large workspaces without lag.
 
-* `gherkinStepNavigator.stepFilePattern`: An array of glob patterns to find your code-behind files.
-  * Default: `["**/*Steps.cs"]`
-  * Example for JavaScript: `["**/*.steps.js", "**/*.test.js"]`
 
-## How to use
 
-1. Open a `.feature` file.
-2. Move your cursor to a step (e.g., `Given I have entered 50 into the calculator`).
-3. Press `F12` or `Ctrl + Click`.
-4. The extension will search your workspace for a matching regex attribute and take you there.
+## ⚙️ Extension Settings
 
-## Why this extension?
+You can customize where the extension looks for step definitions. Go to **Settings** and search for `Gherkin Step Navigator`.
 
-Many BDD extensions are bloated or tied to specific versions of IDEs. **Gherkin Step Navigator** is built to be:
-1. **Fast:** It builds a local index of your steps for near-instant navigation.
-2. **Flexible:** Works with any framework that uses standard Regex-based step attributes.
-3. **Maintained:** Actively updated to support the latest VS Code features.
+* `gherkinStepNavigator.stepFilePattern`: An array of glob patterns to find your step definition files.
+  * **C# (Default):** `["**/*Steps.cs"]`
+  * **Java:** `["src/test/java/**/*.java"]`
+  * **Python:** `["features/steps/**/*.py"]`
+  * **Scan All:** `["**/*"]` (The indexer is optimized to skip binaries and `node_modules` automatically).
 
----
-Created with ❤️ by [Your Name/GitHub]
+## 🚀 Getting Started
+
+### 1. Installation
+Install via the VS Code Marketplace.
+
+### 2. Configuration
+If your step definitions are not in the default `.cs` files, add your pattern to your workspace `settings.json`:
+
+```json
+{
+  "gherkinStepNavigator.stepFilePattern": ["**/*.java", "**/*.py", "**/*.cs"]
+}
