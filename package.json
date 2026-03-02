@@ -5,17 +5,40 @@
   "icon": "icon.png",
   "version": "1.0.0",
   "publisher": "danny-briskin",
+  "author": {
+    "name": "Danny Briskin"
+  },
+  "pricing": "Free",
   "engines": {
     "vscode": "^1.97.0"
   },
   "main": "./out/main.js",
+  "categories": [
+    "Programming Languages",
+    "Formatters",
+    "Other"
+  ],
+  "keywords": [
+    "gherkin",
+    "cucumber",
+    "specflow",
+    "behave",
+    "bdd",
+    "automation"
+  ],
   "activationEvents": [
     "onLanguage:gherkin"
   ],
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/danny-briskin/gherkin-step-navigator.git"
   },
+  "bugs": {
+    "url": "https://github.com/danny-briskin/gherkin-step-navigator/issues",
+    "email": "sql.caoch.kiev@gmail.com"
+  },
+  "homepage": "https://github.com/danny-briskin/gherkin-step-navigator",
   "contributes": {
     "languages": [
       {
@@ -24,7 +47,8 @@
           ".feature"
         ],
         "aliases": [
-          "Gherkin"
+          "Gherkin",
+          "feature"
         ],
         "configuration": "./language-configuration.json"
       }
@@ -37,13 +61,16 @@
       }
     ],
     "configuration": {
-      "title": "Gherkin Step Navigator Settings",
+      "title": "Gherkin Step Navigator",
       "properties": {
         "gherkinStepNavigator.stepFilePattern": {
           "type": "array",
           "default": [
-            "**/*Steps.cs"
+            "**/*Steps.cs",
+            "**/*.java",
+            "**/*.py"
           ],
+          "description": "Glob patterns to find step definition files.",
           "items": {
             "type": "string"
           }
