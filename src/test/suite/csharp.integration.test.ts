@@ -1,6 +1,6 @@
 import * as assert from 'assert';
-import * as vscode from 'vscode';
 import * as path from 'path';
+import * as vscode from 'vscode';
 
 suite('Extension Integration Tests', () => {
     test('F12 Go to Definition should find C# step', async function () {

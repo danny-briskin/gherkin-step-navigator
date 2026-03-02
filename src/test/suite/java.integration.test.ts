@@ -9,6 +9,7 @@ test('Java Integration: Should find @Given in .java files', async () => {
 
     const doc = await vscode.workspace.openTextDocument(uri);
     await vscode.window.showTextDocument(doc);
+    await new Promise(resolve => setTimeout(resolve, 1000));
 
     const pos = new vscode.Position(2, 10);
     const locs = await vscode.commands.executeCommand<vscode.Location[]>(

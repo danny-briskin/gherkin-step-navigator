@@ -14,10 +14,11 @@ suite('Gherkin Step Matcher Test Suite', () => {
     });
 
     test('Multi-Language: Should match German Gherkin', () => {
+        const extensionPath = path.resolve(__dirname, '../../../../'); 
         const stepText = "Angenommen ich bin auf der Startseite";
-        const csharpPattern = "ich bin auf der Startseite";
+        const pattern = "ich bin auf der Startseite";
 
-        const isMatch = StepMatcher.isMatch(stepText, csharpPattern, extensionPath);
+        const isMatch = StepMatcher.isMatch(stepText, pattern, extensionPath);
         assert.strictEqual(isMatch, true, `German match failed for: ${stepText}`);
     });
 
