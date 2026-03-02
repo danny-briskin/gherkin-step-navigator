@@ -4,7 +4,7 @@
   "description": "Navigate from Gherkin feature steps to code.",
   "icon": "icon.png",
   "version": "1.0.0",
-  "publisher": "Danny Briskin",
+  "publisher": "danny-briskin",
   "engines": {
     "vscode": "^1.97.0"
   },
@@ -52,16 +52,20 @@
     }
   },
   "scripts": {
-    "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./",
+    "compile": "npm run bundle-dev && npm run copy-fixtures",
+    "watch": "esbuild ./src/extension.ts --bundle --outfile=out/main.js --external:vscode --format=cjs --platform=node --watch",
     "vscode:prepublish": "npm run bundle",
-    "bundle": "esbuild ./src/extension.ts --bundle --outfile=out/main.js --external:vscode --format=cjs --platform=node --minify"
+    "bundle": "esbuild ./src/extension.ts --bundle --outfile=out/main.js --external:vscode --format=cjs --platform=node --minify",
+    "bundle-dev": "esbuild ./src/extension.ts --bundle --outfile=out/main.js --external:vscode --format=cjs --platform=node",
+    "copy-fixtures": "copyfiles -u 1 \"src/test/fixtures/**/*\" out/",
+    "pretest": "npm run compile"
   },
   "devDependencies": {
     "@types/glob": "^8.1.0",
     "@types/mocha": "^10.0.10",
     "@types/node": "^25.3.1",
     "@types/vscode": "^1.97.0",
+    "copyfiles": "^2.4.1",
     "esbuild": "^0.27.3",
     "glob": "^13.0.6",
     "typescript": "^5.7.3"

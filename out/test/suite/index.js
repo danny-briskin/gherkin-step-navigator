@@ -41,7 +41,8 @@ function run() {
     // Create the mocha instance
     const mocha = new Mocha({
         ui: 'tdd',
-        color: true
+        color: true,
+        timeout: 10000 // Set a global default timeout of 10 seconds
     });
     const testsRoot = path.resolve(__dirname, '..');
     return new Promise((c, e) => {

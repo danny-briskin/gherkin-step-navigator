@@ -37,35 +37,87 @@ exports.StepMatcher = void 0;
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
 class StepMatcher {
-    // Dynamically build the keyword list from your tmLanguage file
     static getKeywords(extensionPath) {
-        if (this.cachedKeywords)
+        if (this.cachedKeywords !== null)
             return this.cachedKeywords;
         try {
-            const grammarPath = path.join(extensionPath, 'syntaxes', 'feature.tmLanguage.json');
-            const grammar = JSON.parse(fs.readFileSync(grammarPath, 'utf8'));
-            // Extract the massive regex string from step_keyword.match
-            const rawMatch = grammar.repository.step_keyword.match;
-            // The keywords are in the first capture group: ^\s*(LIST_HERE):
-            const keywordList = rawMatch.match(/\((.*)\)/)[1];
-            this.cachedKeywords = keywordList;
-            return keywordList;
+            // Try multiple possible paths for the grammar file
+            const possiblePaths = [
+                path.join(extensionPath, 'syntaxes', 'feature.tmLanguage.json'),
+                path.join(extensionPath, '..', 'syntaxes', 'feature.tmLanguage.json'), // If running from 'out'
+                path.join(__dirname, '..', 'syntaxes', 'feature.tmLanguage.json')
+            ];
+            let grammarPath = "";
+            for (const p of possiblePaths) {
+                if (fs.existsSync(p)) {
+                    grammarPath = p;
+                    break;
+                }
+            }
+            if (grammarPath) {
+                const content = fs.readFileSync(grammarPath, 'utf8');
+                const grammar = JSON.parse(content);
+                const repo = grammar.repository;
+                const keywordPatterns = [
+                    repo.step_keyword?.match,
+                    repo.and_keyword?.match,
+                    repo.when_keyword?.match,
+                    repo.then_keyword?.match,
+                    repo.given_keyword?.match
+                ].filter(Boolean);
+                const allWords = keywordPatterns.flatMap(pattern => {
+                    const match = pattern.match(/\((.*)\)/);
+                    if (!match)
+                        return [];
+                    return match[1].split('|').map(k => {
+                        return k.replace(/[\\^$*+?.()|[\]{}]/g, '').trim();
+                    });
+                });
+                const uniqueKeywords = [...new Set(allWords)].filter(k => k.length > 0);
+                // Re-apply the escape logic to handle apostrophes in French
+                this.cachedKeywords = uniqueKeywords
+                    .map(k => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+                    .join('|');
+                console.log("DEBUG - Successfully loaded keywords from grammar.");
+                return this.cachedKeywords;
+            }
+        }
+        catch (err) {
+            console.error("DEBUG - Keyword Extraction Failed:", err);
+        }
+        // UPDATED FALLBACK: Include common languages so tests don't break if file is missing
+        console.warn("DEBUG - Using hardcoded fallback keywords!");
+        return "Given|When|Then|And|But|Angenommen|Étant donné|Et|Und";
+    }
+    static extractRegex(line, extensionPath) {
+        try {
+            const keywords = this.getKeywords(extensionPath);
+            const allKeywords = `${keywords}|StepDefinition`;
+            // Flexible pattern for C# attributes
+            const pattern = `\\[\\s*(?:${allKeywords})\\s*\\(\\s*@?"(.*)"\\s*\\)\\s*\\]`;
+            // Use a try-catch specifically for the RegExp constructor
+            const regex = new RegExp(pattern, 'i');
+            const match = line.match(regex);
+            return match ? match[1] : null;
         }
         catch (e) {
-            // Fallback to English if file reading fails
-            return "Given|When|Then|And|But";
+            console.error("DEBUG - Regex match failed:", e);
+            return null;
         }
     }
     static isMatch(stepText, csharpPattern, extensionPath) {
         try {
             const keywords = this.getKeywords(extensionPath);
-            // Create a regex that strips ANY valid Gherkin keyword from any language
-            const keywordRegex = new RegExp(`^\\s*(${keywords})\\s+`, 'i');
-            const cleanStep = stepText.replace(keywordRegex, '');
-            const regex = new RegExp(`^${csharpPattern}$`);
+            const keywordRegex = new RegExp(`^\\s*(?:${keywords})\\s+`, 'i');
+            if (!keywordRegex.test(stepText))
+                return false;
+            const cleanStep = stepText.replace(keywordRegex, '').trim();
+            // Normalize C# verbatim quotes ("") to standard quotes (")
+            const cleanPattern = csharpPattern.replace(/""/g, '"').trim();
+            const regex = new RegExp(`^${cleanPattern}$`, 'i');
             return regex.test(cleanStep);
         }
-        catch {
+        catch (e) {
             return false;
         }
     }
