@@ -11,7 +11,8 @@ export interface GherkinKeywords {
 
 export class GherkinFormatter {
     /**
-     * Main entry point for formatting. Now accepts keywords for internationalization support.
+     * Main entry point for formatting Gherkin files.
+     * Handles indentation and table alignment using localized keywords.
      */
     public static format(document: vscode.TextDocument, keywords: GherkinKeywords): vscode.TextEdit[] {
         const edits: vscode.TextEdit[] = [];
@@ -21,24 +22,21 @@ export class GherkinFormatter {
         for (let i = 0; i < document.lineCount; i++) {
             const line = document.lineAt(i);
             const text = line.text.trim();
+            if (!text) continue;
 
-            if (!text) continue; // Skip empty lines
-
-            // 1. Logic Switch: Tables vs. Standard Indentation
+            // Detect Data Table lines (pipes)
             if (text.startsWith('|')) {
                 inTable = true;
-                // Preserve raw text for table collection to maintain pipe structure
-                const cells = line.text.split('|');
-                tableRows.push({ line: i, cells });
+                tableRows.push({ line: i, cells: line.text.split('|') });
             } else {
-                // If we hit a non-table line, flush any collected table rows first
+                // Flush collected table rows if we reach the end of a table block
                 if (inTable) {
                     edits.push(...this.alignTable(tableRows, document));
                     tableRows = [];
                     inTable = false;
                 }
 
-                // 2. Handle Indentation Logic using dynamic keywords
+                // Apply standard indentation logic
                 const formattedLine = this.applyIndentation(line.text, keywords);
                 if (formattedLine !== line.text) {
                     edits.push(vscode.TextEdit.replace(line.range, formattedLine));
@@ -46,7 +44,7 @@ export class GherkinFormatter {
             }
         }
 
-        // Final flush for tables at the end of a file
+        // Final flush if the file ends with a table
         if (inTable) {
             edits.push(...this.alignTable(tableRows, document));
         }
@@ -55,66 +53,55 @@ export class GherkinFormatter {
     }
 
     /**
-     * Applies indentation levels based on Gherkin keyword types.
+     * Calculates the appropriate indentation level based on Gherkin structure.
      */
     private static applyIndentation(originalText: string, keywords: GherkinKeywords): string {
         const text = originalText.trim();
-        if (!text) return "";
 
-        // Feature level (e.g., Feature:, Özellik:): 0 spaces
+        // 0 spaces: Feature level
         if (keywords.features.test(text)) return text;
 
-        // Scenario/Background/Rule level: 2 spaces
+        // 2 spaces: Scenarios, Rules, Backgrounds
         if (keywords.elements.test(text)) return "  " + text;
 
-        // Step level (Given, When, Then, etc.): 4 spaces
+        // 4 spaces: Steps (Given, When, Then, And, But)
         if (keywords.steps.test(text)) return "    " + text;
 
-        // DocStrings or fallback: 6 spaces
+        // 6 spaces: DocString blocks (""")
         if (text.startsWith('"""')) return "      " + text;
 
-        return text;
+        return "    " + text;
     }
 
     /**
-     * Aligns data table pipes vertically based on the maximum width of content in each column.
+     * Aligns data table pipes vertically.
+     * Uses a two-pass approach:
+     * 1. Measure the maximum width required for each column across all rows.
+     * 2. Pad each cell and reconstruct the row string with consistent vertical pipes.
      */
     private static alignTable(rows: any[], document: vscode.TextDocument): vscode.TextEdit[] {
         const edits: vscode.TextEdit[] = [];
-        if (rows.length === 0) return edits;
-
         const columnWidths: number[] = [];
 
-        // Pass 1: Measure max width for each column
+        // Pass 1: Measure max widths per column
         rows.forEach((row) => {
             (row.cells as string[]).forEach((cell: string, idx: number) => {
-                const trimmed = cell.trim();
-                columnWidths[idx] = Math.max(columnWidths[idx] || 0, trimmed.length);
+                // Skip the outer segments of the split (before first pipe and after last)
+                if (idx === 0 || idx === row.cells.length - 1) return;
+                columnWidths[idx] = Math.max(columnWidths[idx] || 0, cell.trim().length);
             });
         });
 
-        // Pass 2: Reconstruct rows with uniform padding
+        // Pass 2: Reconstruct and pad rows to 6-space indentation
         rows.forEach((row) => {
             const line = document.lineAt(row.line);
-            const rawCells = row.cells as string[];
-
-            // Remove empty strings from leading/trailing pipes
-            const contentCells = rawCells.slice(1, -1);
-
-            const formattedCells = contentCells.map((cell: string, i: number) => {
-                const content = cell.trim();
-                const colIndex = i + 1; // Offset for the leading pipe
-                const targetWidth = columnWidths[colIndex];
-
-                // Add standard padding: " Content(padded) "
-                return ` ${content.padEnd(targetWidth)} `;
+            const contentCells = (row.cells as string[]).slice(1, -1);
+            const formatted = contentCells.map((cell, i) => {
+                const colIndex = i + 1;
+                return ` ${cell.trim().padEnd(columnWidths[colIndex])} `;
             });
-
-            // Tables are indented to 6 spaces (same level as DocStrings)
-            const alignedRow = "      |" + formattedCells.join('|') + "|";
-            edits.push(vscode.TextEdit.replace(line.range, alignedRow));
+            edits.push(vscode.TextEdit.replace(line.range, "      |" + formatted.join('|') + "|"));
         });
-
         return edits;
     }
 }
