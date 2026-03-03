@@ -1,12 +1,19 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
+export interface GherkinFormattingRegexes {
+    features: RegExp;
+    elements: RegExp;
+    steps: RegExp;
+}
+
 export class StepMatcher {
     private static cachedGrammar: any = null;
     private static cachedKeywords: string | null = null;
 
     /**
-     * Loads the tmLanguage grammar to extract localized keywords.
+     * Loads the tmLanguage grammar from the extension installation to extract localized keywords.
+     * Caches the result to avoid repeated disk I/O.
      */
     private static getGrammar(extensionPath: string | undefined): any {
         if (this.cachedGrammar) return this.cachedGrammar;
@@ -20,28 +27,26 @@ export class StepMatcher {
 
         for (const p of possiblePaths) {
             if (fs.existsSync(p)) {
-                this.cachedGrammar = JSON.parse(fs.readFileSync(p, 'utf8'));
-                return this.cachedGrammar;
+                try {
+                    this.cachedGrammar = JSON.parse(fs.readFileSync(p, 'utf8'));
+                    return this.cachedGrammar;
+                } catch (e) { continue; }
             }
         }
         return null;
     }
 
     /**
-     * Retrieves and cleans Gherkin keywords (Given, When, etc.) from the grammar.
+     * Extracts and cleans the pipe-separated list of Gherkin step keywords (Given, When, etc.)
+     * from the JSON grammar. Handles wildcard '*' symbols and trimming.
      */
     private static getKeywords(extensionPath: string): string {
         if (this.cachedKeywords !== null) return this.cachedKeywords;
-
         const grammar = this.getGrammar(extensionPath);
         if (grammar) {
             let rawMatch = grammar.repository.step_keyword.match;
-
-            let cleaned = rawMatch
-                .replace(/^\^\\s\*\(/, '')
-                .replace(/\)\s*\$/, '')
-                .replace(/\)$/, '');
-
+            // Clean up regex symbols from grammar
+            let cleaned = rawMatch.replace(/^\^\\s\*\(/, '').replace(/\)\s*\$/, '').replace(/\)$/, '');
             this.cachedKeywords = cleaned.split('|')
                 .map((k: string) => k.trim())
                 .filter((k: string) => k.length > 0)
@@ -50,58 +55,72 @@ export class StepMatcher {
 
             return this.cachedKeywords!;
         }
-        return "Given|When|Then|And|But";
+        return "Given|When|Then|And|But"; // Fallback
     }
 
     /**
-     * Matches a Gherkin step line against a stored step definition pattern.
+     * Determines if a line of Gherkin text matches a specific step definition pattern.
+     * Supports Cucumber Expressions by converting placeholders into regex groups.
      */
     public static isMatch(stepText: string, pattern: string, extensionPath: string): boolean {
         const keywords = this.getKeywords(extensionPath);
-
-        // Match keyword at start of line with word boundary check
+        // Ensure the line actually starts with a valid Gherkin keyword
         const keywordRegex = new RegExp(`^\\s*(?:${keywords})(?=\\s+|$)`, 'i');
+        if (!keywordRegex.test(stepText.trimStart())) return false;
 
-        if (!keywordRegex.test(stepText.trimStart())) {
-            return false;
-        }
-
+        // Remove the keyword to match only the unique part of the step
         const cleanStep = stepText.trim().replace(keywordRegex, '').trim();
 
-        // Convert Cucumber-style expression placeholders to valid Regular Expressions
+        // Conversion logic: placeholders -> regex
         const convertedPattern = pattern
-            .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-            .replace(/\\\{int\\\}/g, '\\d+')
-            .replace(/\\\{float\\\}/g, '[\\d\\.]+')
-            .replace(/\\\{word\\\}/g, '[^\\s]+')
-            .replace(/\\\{string\\\}/g, '.*')
-            .replace(/\\\{count:d\\\}/g, '\\d+');
+            .replace(/[.*+?^${}()|[\]\\]/g, '\\$&') // Escape regex special chars
+            .replace(/\\\{int\\\}/g, '\\d+')        // {int} -> digits
+            .replace(/\\\{float\\\}/g, '[\\d\\.]+') // {float} -> digits/dots
+            .replace(/\\\{word\\\}/g, '[^\\s]+')    // {word} -> non-whitespace
+            .replace(/\\\{string\\\}/g, '.*')       // {string} -> anything
+            .replace(/\\\{count:d\\\}/g, '\\d+');   // SpecFlow custom:d -> digits
 
-        const finalRegex = new RegExp(`^${convertedPattern}$`, 'i');
-        return finalRegex.test(cleanStep);
+        try {
+            const finalRegex = new RegExp(`^${convertedPattern}$`, 'i');
+            return finalRegex.test(cleanStep);
+        } catch (e) { return false; }
     }
 
     /**
-     * Generates regex objects for the Gherkin formatter.
+     * Generates a set of regexes used by the GherkinFormatter.
+     * Extracts localized "Feature", "Scenario", and Step keywords from grammar.
      */
-    public static getFormattingKeywords(extensionPath: string) {
+    public static getFormattingKeywords(extensionPath: string): GherkinFormattingRegexes | null {
         const grammar = this.getGrammar(extensionPath);
         if (!grammar) return null;
-        const clean = (raw: string) => raw.replace(/^\^\\s\*\(/, '').replace(/\)$/, '');
-        return {
-            features: new RegExp(`^\\s*(${clean(grammar.repository.feature_keyword.match.split(':')[0])}):`, 'i'),
-            elements: new RegExp(`^\\s*(${clean(grammar.repository.feature_element_keyword.match.split(':')[0])}):`, 'i'),
-            steps: new RegExp(`^\\s*(?:${this.getKeywords(extensionPath)})(\\s+|$)`, 'i')
+
+        const clean = (raw: string) => {
+            return raw
+                .replace(/^\^/, '').replace(/\$$/, '')
+                .replace(/^\\s\*\(/, '').replace(/\)\s*$/, '')
+                .replace(/\):.*$/, '').replace(/\)$/, '');
         };
+
+        try {
+            const featureRaw = clean(grammar.repository.feature_keyword.match);
+            const elementRaw = clean(grammar.repository.feature_element_keyword.match);
+            const stepKeywords = this.getKeywords(extensionPath);
+
+            return {
+                features: new RegExp(`^(?:${featureRaw}):`, 'i'),
+                elements: new RegExp(`^(?:${elementRaw}):`, 'i'),
+                steps: new RegExp(`^(?:${stepKeywords})(?:\\s+|$)`, 'i')
+            };
+        } catch (e) { return null; }
     }
 
     /**
-     * Returns a regex to find step definitions in source code (e.g., @Given("pattern")).
+     * Returns a global regex to find step definitions in source files.
+     * Matches patterns like @Given("pattern"), @When('pattern'), or [Given("pattern")].
      */
     public static getSourceRegex(extensionPath: string): RegExp {
         const keywords = this.getKeywords(extensionPath);
-        // Captures content inside quotes preceded by a Gherkin keyword decorator
-        const decoratorPattern = `(?:@|\\[)(?:${keywords}).*?(['"])(.*?)\\1`;
-        return new RegExp(decoratorPattern, 'gi');
+        // Catch both attribute-style (C#) and decorator-style (Python/Java) definitions
+        return new RegExp(`(?:@|\\s*\\[)(?:${keywords}|StepDefinition).*?[@$]?(['"])(.*?)\\1`, 'gi');
     }
 }
