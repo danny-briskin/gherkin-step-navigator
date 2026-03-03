@@ -4,7 +4,9 @@ import * as vscode from 'vscode';
 
 suite('Extension Integration Tests', () => {
     test('F12 Go to Definition should find C# step', async function () {
-        this.timeout(10000);
+        // Add this inside your test to see what the indexer sees
+        const files = await vscode.workspace.findFiles('**/*.cs');
+        console.log(`DEBUG: Integration test found ${files.length} C# files in workspace`);
 
         const extension = vscode.extensions.getExtension('danny-briskin.gherkin-step-navigator');
         const workspacePath = path.join(extension!.extensionPath, 'out', 'test', 'fixtures');
@@ -24,5 +26,33 @@ suite('Extension Integration Tests', () => {
         );
 
         assert.ok(locations && locations.length > 0, `Definition not found at ${position.line}. Indexer found 0 files.`);
+    });
+
+    test('F12: Should resolve C# step with regex parameters', async function () {
+        // Add this inside your test to see what the indexer sees
+        const files = await vscode.workspace.findFiles('**/*.cs');
+        console.log(`DEBUG: Integration test found ${files.length} C# files in workspace`);
+        
+        const extension = vscode.extensions.getExtension('danny-briskin.gherkin-step-navigator');
+        const fixturePath = path.join(extension!.extensionPath, 'out', 'test', 'fixtures');
+        const featureUri = vscode.Uri.file(path.join(fixturePath, 'csharp_test.feature'));
+
+        const document = await vscode.workspace.openTextDocument(featureUri);
+        await vscode.window.showTextDocument(document);
+
+        // Give indexer time to breathe
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
+        // CHANGE: Target Line 3 (the one with the "Admin" parameter)
+        const position = new vscode.Position(3, 15);
+
+        const locations = await vscode.commands.executeCommand<vscode.Location[]>(
+            'vscode.executeDefinitionProvider',
+            document.uri,
+            position
+        );
+
+        assert.ok(locations && locations.length > 0,
+            `Failed at line ${position.line}. Ensure this line in the .feature file matches a [Given/When/Then] in your .cs file.`);
     });
 });

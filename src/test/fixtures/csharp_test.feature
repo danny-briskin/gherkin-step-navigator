@@ -1,3 +1,5 @@
-Feature: Testing Navigation
-  Scenario: Automated Test
-    Given the user is on the login page
+Feature: C# Integration
+  Scenario: Parameter Testing
+    Given a simple step
+    When a user "Admin" exists
+    Then I see 5 results

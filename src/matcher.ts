@@ -52,10 +52,14 @@ export class StepMatcher {
                 .filter((k: string) => k.length > 0)
                 .map((k: string) => k === '*' ? '\\*' : k)
                 .join('|');
-
+            
+            // Add StepDefinition to the returned string if it's not there
+            if (!this.cachedKeywords!.includes('StepDefinition')) {
+                this.cachedKeywords += '|StepDefinition';
+            }
             return this.cachedKeywords!;
         }
-        return "Given|When|Then|And|But"; // Fallback
+        return "Given|When|Then|And|But";
     }
 
     /**
@@ -71,18 +75,39 @@ export class StepMatcher {
         // Remove the keyword to match only the unique part of the step
         const cleanStep = stepText.trim().replace(keywordRegex, '').trim();
 
-        // Conversion logic: placeholders -> regex
-        const convertedPattern = pattern
-            .replace(/[.*+?^${}()|[\]\\]/g, '\\$&') // Escape regex special chars
-            .replace(/\\\{int\\\}/g, '\\d+')        // {int} -> digits
-            .replace(/\\\{float\\\}/g, '[\\d\\.]+') // {float} -> digits/dots
-            .replace(/\\\{word\\\}/g, '[^\\s]+')    // {word} -> non-whitespace
-            .replace(/\\\{string\\\}/g, '.*')       // {string} -> anything
-            .replace(/\\\{count:d\\\}/g, '\\d+');   // SpecFlow custom:d -> digits
+        // 1. Normalize C# verbatim quotes
+        let convertedPattern = pattern.replace(/""/g, '"');
+
+        // 2. Identify if it's a regex or a cucumber expression
+        const isRegex = convertedPattern.includes('(') ||
+            convertedPattern.includes('\\d') ||
+            convertedPattern.startsWith('^');
+
+        // 3. Escape literals if NOT a regex, but keep placeholders safe
+        if (!isRegex) {
+            convertedPattern = convertedPattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        }
+
+        // 4. Transform all known placeholders into regex groups
+        convertedPattern = convertedPattern
+            .replace(/\\\{int\\\}/g, '\\d+').replace(/\{int\}/g, '\\d+')
+            .replace(/\\\{float\\\}/g, '[\\d\\.]+').replace(/\{float\}/g, '[\\d\\.]+')
+            .replace(/\\\{word\\\}/g, '[^\\s]+').replace(/\{word\}/g, '[^\\s]+')
+            .replace(/\\\{string\\\}/g, '.*').replace(/\{string\}/g, '.*')
+            .replace(/\\\{count:d\\\}/g, '\\d+')
+            .replace(/\\\{[\w:]+\\\}/g, '.*').replace(/\{[\w:]+\}/g, '.*');
 
         try {
-            const finalRegex = new RegExp(`^${convertedPattern}$`, 'i');
-            return finalRegex.test(cleanStep);
+            // Restore anchors but allow trailing wildcards for C# prefix patterns
+            // If the pattern ends in a space, it likely expects a parameter.
+            const suffix = convertedPattern.endsWith(' ') ? '.*' : '';
+            const finalRegex = new RegExp(`^${convertedPattern}${suffix}$`, 'i');
+
+            const result = finalRegex.test(cleanStep);
+
+            console.log(`[DEBUG MATCH] Step: "${cleanStep}" | Pattern Regex: "^${convertedPattern}${suffix}$" | Result: ${result}`);
+
+            return result;
         } catch (e) { return false; }
     }
 
@@ -120,7 +145,10 @@ export class StepMatcher {
      */
     public static getSourceRegex(extensionPath: string): RegExp {
         const keywords = this.getKeywords(extensionPath);
-        // Catch both attribute-style (C#) and decorator-style (Python/Java) definitions
-        return new RegExp(`(?:@|\\s*\\[)(?:${keywords}|StepDefinition).*?[@$]?(['"])(.*?)\\1`, 'gi');
+        // 1. (?:@|\\s*\\[) -> Matches either @ (Java/Python) or [ (C#)
+        // 2. (?:${keywords}|StepDefinition) -> The Gherkin keyword
+        // 3. [^"']*? -> Non-greedy skip that CANNOT skip past a quote
+        // 4. [@$]? -> Matches C# verbatim (@) or interpolated ($) string markers
+        return new RegExp(`(?:@|\\s*\\[)(?:${keywords}|StepDefinition)[^"']*?[@$]?(['"])(.*?)\\1`, 'gi');
     }
 }
