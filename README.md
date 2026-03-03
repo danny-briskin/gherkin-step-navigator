@@ -2,24 +2,31 @@
 
 🚀 **Instantly jump from Gherkin feature steps to their code implementations across C#, Java, Python, and more.**
 
-Gherkin Step Navigator is a lightweight, high-performance VS Code extension that brings "Go to Definition" support to BDD (Behavior Driven Development) frameworks. By reading directly from the Gherkin grammar, it supports international keywords (like *Angenommen*, *Étant donné*, *Dado*) out of the box.
+Gherkin Step Navigator is a lightweight, high-performance VS Code extension that brings "Go to Definition" support to BDD (Behavior Driven Development) frameworks. By reading directly from the Gherkin grammar, it supports international keywords (like *Angenommen*, *Étant donné*, *Dado*) out of the box while providing rich, theme-integrated syntax coloring for all Gherkin elements..
 
 ---
 
 ## 🌟 Key Features
 
 - **Universal "Go to Definition" (F12):** Ctrl+Click any step in a `.feature` file to jump directly to the matching code implementation.
-- **Smart Multi-Language Support:** Unlike other extensions, this one parses your installed Gherkin grammar (`tmLanguage`). If VS Code supports a Gherkin keyword, this extension does too.
-- **Cross-Language Step Detection:** Automatically indexes and matches:
-  - **C#:** `[Given(@"regex")]`
-  - **Java:** `@Given("regex")` or `@Given("Cucumber Expression")`
-  - **Python:** `@given('regex')` or `@when(u'unicode')`
-- **Smart Parameter Normalization:** Handles Cucumber Expressions like `{int}`, `{string}`, and `{word}`, as well as Python-style `{count:d}`.
-- **Auto-Formatting:** - **Indentation:** Intelligent Gherkin indentation (Feature: 0, Scenario: 2, Step: 4).
-  - **Table Alignment:** Vertically aligns pipes `|` based on the maximum cell width in the column.
+- **Smart Multi-Language Support:** Automatically parses your installed Gherkin grammar (`tmLanguage`). If VS Code highlights it, this extension can navigate it.
+- **Robust Step Detection:** Automatically indexes and matches definitions across multiple languages. For example:
+  - **C# / SpecFlow / Reqnroll:** `[Given(@"regex")]`
+  - **Java / Cucumber:** `@Given("regex")` or `@Given("Cucumber Expression")`
+  - **Python / Behave:** `@given('regex')` or `@when(u'unicode')`
+- **Advanced Parameter Matching:** Supports Cucumber Expressions like `{int}`, `{string}`, `{word}`, and `{float}`, as well as SpecFlow-style `{count:d}`.
+- **Intelligence Formatting:** - **Auto-Indentation:** Feature (0), Scenario (2), and Steps (4 spaces).
+  - **Dynamic Table Alignment:** Vertically aligns pipes `|` based on column content width.
   - **DocStrings:** Properly indents triple quotes `"""` to 6 spaces.
 
+---
+## 🎨 Syntax Highlighting
 
+This extension includes a high-performance **TextMate Grammar** that provides rich syntax coloring for `.feature` files. 
+
+- **Supports 70+ Languages:** Keywords are automatically colorized in English, French, German, Spanish, Chinese, and many more.
+- **Theme Integration:** Uses standard VS Code scopes to ensure compatibility with your favorite color themes.
+- **Advanced Tagging:** Highlights Scenario Outline variables `<brackets>`, DocStrings `"""`, and escaped characters within strings.
 
 ---
 
@@ -28,15 +35,15 @@ Gherkin Step Navigator is a lightweight, high-performance VS Code extension that
 You can customize where the extension looks for step definitions and how it handles different languages. Go to **Settings** and search for `Gherkin Step Navigator`.
 
 ### Step File Patterns
-The indexer scans your workspace based on these glob patterns. 
-* **C# (Default):** `["**/*Steps.cs"]`
-* **Java:** `["src/test/java/**/*.java"]`
-* **Python:** `["features/steps/**/*.py"]`
-* **Universal:** `["**/*.{cs,java,py,ts,js}"]`
+The indexer scans your workspace based on these glob patterns. You can add specific project folders to speed up indexing:
 
-### Performance Note
-The indexer is optimized to skip `node_modules`, `bin`, `obj`, and `.venv` directories automatically to ensure the UI remains snappy even in massive mono-repos.
-
+```json
+"gherkinStepNavigator.stepFilePattern": [
+    "**/Company.Project.Application/Steps/*.cs",
+    "src/test/java/**/*.java",
+    "features/steps/**/*.py"
+]
+```
 ---
 
 ## 🚀 Getting Started
@@ -51,7 +58,8 @@ The indexer is optimized to skip `node_modules`, `bin`, `obj`, and `.venv` direc
 ## 🛠️ Requirements
 
 * **VS Code 1.97.0+**
-* A Gherkin grammar extension (usually built into VS Code) for international keyword support.
+* Regex Safety: The engine includes a safety layer to handle complex internationalized grammar patterns without crashing the Extension Host.
+* Performance: Optimized to skip node_modules, bin, obj, and .venv directories to maintain UI responsiveness in large mono-repos.
 
 ## 🤝 Contributing
 
