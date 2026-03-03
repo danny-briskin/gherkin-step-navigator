@@ -110,18 +110,25 @@ async function indexFile(uri: vscode.Uri, extensionPath: string) {
 
     let match;
     while ((match = stepDefRegex.exec(text)) !== null) {
+      // match[2] is the pattern inside the quotes
       const pattern = match[2] || match[1];
-      if (pattern) {
-        const lines = text.substring(0, match.index).split('\n');
-        const pos = new vscode.Position(lines.length - 1, lines[lines.length - 1].length);
 
+      if (pattern) {
+        // match.index points to the start of the whole match (e.g., the '[' or '@')
+        // We find the specific start of the pattern (match[2]) within the whole match
+        const patternStartOffset = match[0].indexOf(pattern);
+        const totalOffset = match.index + patternStartOffset;
+
+        const lines = text.substring(0, totalOffset).split(/\r?\n/);
+        const lineNum = lines.length - 1;
+        const charNum = lines[lineNum].length;
+
+        const pos = new vscode.Position(lineNum, charNum);
         const existing = stepCache.get(pattern) || [];
         stepCache.set(pattern, [...existing, new vscode.Location(uri, pos)]);
       }
     }
-  } catch (e) {
-    // Fail silently: file might be locked or inaccessible
-  }
+  } catch (e) { }
 }
 
 /**
