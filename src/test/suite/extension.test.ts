@@ -23,10 +23,7 @@ suite('Gherkin Step Matcher Test Suite', () => {
     });
 
     test('Manual Check: Keyword string contains German', () => {
-        // Accessing private method for debugging via type casting
         const keywords = (StepMatcher as any).getKeywords(extensionPath);
-
-        console.log("DEBUG - Loaded Keywords:", keywords.substring(0, 100));
 
         const hasGerman = keywords.toLowerCase().includes('angenommen');
         assert.strictEqual(hasGerman, true, `German keyword missing from raw string. Found: ${keywords.substring(0, 50)}`);

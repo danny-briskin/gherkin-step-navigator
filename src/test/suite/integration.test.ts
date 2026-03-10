@@ -40,7 +40,7 @@ suite('Integration & Edge Case Test Suite', () => {
 
     test('Cache Integrity: Should index steps from specific Soti folders', async () => {
         // This requires the extension to be active
-        const ext = vscode.extensions.getExtension('danny-briskin.gherkin-step-navigator');
+        const ext = vscode.extensions.getExtension('DannyBriskin.gherkin-step-navigator');
         await ext?.activate();
 
         // We can't access 'stepCache' directly (it's private), 

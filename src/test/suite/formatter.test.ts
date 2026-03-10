@@ -35,10 +35,6 @@ And another step`;
         // 2. Run formatting with real grammar-derived regexes
         const edits = GherkinFormatter.format(doc, realKeywords!);
 
-        // Debug: Log what the real regexes look like to the console
-        console.log('Real Feature Regex:', realKeywords?.features.source);
-        console.log('Real Step Regex:', realKeywords?.steps.source);
-
         // 3. Assertions
         const scenarioEdit = edits.find(e => e.range.start.line === 1);
         const stepEdit = edits.find(e => e.range.start.line === 2);
@@ -68,5 +64,31 @@ And another step`;
 
         // Ensure "bob" is padded to match the width of "alexander"
         assert.ok(longRowEdit?.newText.includes('| alexander |'), "Table padding failed");
+    });
+    test('Tag Alignment: Should inherit indentation from subsequent element', async () => {
+        // Note the intentional bad spacing: 4 spaces before @tag1 and 0 before @tag2
+        const content =
+            `    @tag1
+Feature: Tag Test
+@tag2
+  Scenario: Nested tag
+    Given a step`;
+
+        const doc = await vscode.workspace.openTextDocument({ content, language: 'gherkin' });
+        const mockKeywords = {
+            features: /Feature:/i,
+            elements: /Scenario:/i,
+            steps: /Given|When|Then/i
+        };
+
+        const edits = GherkinFormatter.format(doc, mockKeywords);
+
+        // Verify @tag1 moved from 4 spaces to 0
+        const tag1Edit = edits.find(e => e.range.start.line === 0);
+        assert.strictEqual(tag1Edit?.newText, '@tag1', "Root tag should have 0 indentation");
+
+        // Verify @tag2 moved from 0 spaces to 2
+        const tag2Edit = edits.find(e => e.range.start.line === 2);
+        assert.strictEqual(tag2Edit?.newText, '  @tag2', "Nested tag should inherit 2-space indentation");
     });
 });
