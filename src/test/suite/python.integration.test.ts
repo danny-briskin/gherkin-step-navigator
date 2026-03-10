@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 
 test('Python Integration: Should find @given in .py files', async () => {
-    const extension = vscode.extensions.getExtension('danny-briskin.gherkin-step-navigator');
+    const extension = vscode.extensions.getExtension('DannyBriskin.gherkin-step-navigator');
     const fixturePath = path.join(extension!.extensionPath, 'out', 'test', 'fixtures');
     const uri = vscode.Uri.file(path.join(fixturePath, 'python_test.feature'));
 

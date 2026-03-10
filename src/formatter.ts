@@ -18,38 +18,71 @@ export class GherkinFormatter {
         const edits: vscode.TextEdit[] = [];
         let inTable = false;
         let tableRows: { line: number, cells: string[] }[] = [];
+        let tagBuffer: vscode.TextLine[] = [];
 
-        for (let i = 0; i < document.lineCount; i++) {
-            const line = document.lineAt(i);
-            const text = line.text.trim();
-            if (!text) continue;
+        // Iterate + 1 to handle EOF flush
+        for (let i = 0; i <= document.lineCount; i++) {
+            const line = i < document.lineCount ? document.lineAt(i) : null;
+            const text = line?.text.trim() || "";
 
-            // Detect Data Table lines (pipes)
-            if (text.startsWith('|')) {
+            // 1. Buffer Tags
+            if (line && text.startsWith('@')) {
+                tagBuffer.push(line);
+                continue;
+            }
+
+            // 2. Buffer Tables
+            if (line && text.startsWith('|')) {
                 inTable = true;
                 tableRows.push({ line: i, cells: line.text.split('|') });
-            } else {
-                // Flush collected table rows if we reach the end of a table block
-                if (inTable) {
-                    edits.push(...this.alignTable(tableRows, document));
-                    tableRows = [];
-                    inTable = false;
-                }
+                continue;
+            }
 
-                // Apply standard indentation logic
+            // 3. Flush Tags - We hit an Anchor (Feature/Scenario/Step) or End of File
+            if (tagBuffer.length > 0 && (text || i === document.lineCount)) {
+                const targetIndent = line ? this.getIndentationLevel(line.text, keywords) : "";
+
+                tagBuffer.forEach(tagLine => {
+                    const formattedTag = targetIndent + tagLine.text.trim();
+
+                    // If they are exactly the same, no edit is created.
+                    // In tests, if the input already matches the output, find() returns undefined.
+                    if (formattedTag !== tagLine.text) {
+                        edits.push(vscode.TextEdit.replace(tagLine.range, formattedTag));
+                    } 
+                });
+                tagBuffer = [];
+            }
+
+            // 4. Flush Tables
+            if (inTable && (!line || !text.startsWith('|'))) {
+                edits.push(...this.alignTable(tableRows, document));
+                tableRows = [];
+                inTable = false;
+            }
+
+            // 5. Normal Line Indentation
+            if (line && text) {
                 const formattedLine = this.applyIndentation(line.text, keywords);
                 if (formattedLine !== line.text) {
                     edits.push(vscode.TextEdit.replace(line.range, formattedLine));
                 }
             }
         }
-
-        // Final flush if the file ends with a table
-        if (inTable) {
-            edits.push(...this.alignTable(tableRows, document));
-        }
-
         return edits;
+    }
+
+    /**
+     * Helper to determine what the indentation of the line SHOULD be, 
+     * based on your existing logic.
+     */
+    private static getIndentationLevel(text: string, keywords: GherkinKeywords): string {
+        const trimmed = text.trim();
+        if (keywords.features.test(trimmed)) return "";
+        if (keywords.elements.test(trimmed)) return "  ";
+        if (keywords.steps.test(trimmed)) return "    ";
+        if (trimmed.startsWith('"""')) return "      ";
+        return "    ";
     }
 
     /**

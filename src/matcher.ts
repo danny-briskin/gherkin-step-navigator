@@ -105,8 +105,6 @@ export class StepMatcher {
 
             const result = finalRegex.test(cleanStep);
 
-            console.log(`[DEBUG MATCH] Step: "${cleanStep}" | Pattern Regex: "^${convertedPattern}${suffix}$" | Result: ${result}`);
-
             return result;
         } catch (e) { return false; }
     }

@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 
 test('Java Integration: Should find @Given in .java files', async () => {
-    const extension = vscode.extensions.getExtension('danny-briskin.gherkin-step-navigator');
+    const extension = vscode.extensions.getExtension('DannyBriskin.gherkin-step-navigator');
     const fixturePath = path.join(extension!.extensionPath, 'out', 'test', 'fixtures');
     const uri = vscode.Uri.file(path.join(fixturePath, 'java_test.feature'));
 

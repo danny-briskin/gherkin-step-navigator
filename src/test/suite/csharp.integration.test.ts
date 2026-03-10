@@ -6,9 +6,8 @@ suite('Extension Integration Tests', () => {
     test('F12 Go to Definition should find C# step', async function () {
         // Add this inside your test to see what the indexer sees
         const files = await vscode.workspace.findFiles('**/*.cs');
-        console.log(`DEBUG: Integration test found ${files.length} C# files in workspace`);
 
-        const extension = vscode.extensions.getExtension('danny-briskin.gherkin-step-navigator');
+        const extension = vscode.extensions.getExtension('DannyBriskin.gherkin-step-navigator');
         const workspacePath = path.join(extension!.extensionPath, 'out', 'test', 'fixtures');
         const featureUri = vscode.Uri.file(path.join(workspacePath, 'csharp_test.feature'));
 
@@ -31,9 +30,8 @@ suite('Extension Integration Tests', () => {
     test('F12: Should resolve C# step with regex parameters', async function () {
         // Add this inside your test to see what the indexer sees
         const files = await vscode.workspace.findFiles('**/*.cs');
-        console.log(`DEBUG: Integration test found ${files.length} C# files in workspace`);
         
-        const extension = vscode.extensions.getExtension('danny-briskin.gherkin-step-navigator');
+        const extension = vscode.extensions.getExtension('DannyBriskin.gherkin-step-navigator');
         const fixturePath = path.join(extension!.extensionPath, 'out', 'test', 'fixtures');
         const featureUri = vscode.Uri.file(path.join(fixturePath, 'csharp_test.feature'));
 
