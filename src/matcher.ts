@@ -78,6 +78,9 @@ export class StepMatcher {
         // 1. Normalize C# verbatim quotes
         let convertedPattern = pattern.replace(/""/g, '"');
 
+        // 1. Literal Match Check
+        if (cleanStep.toLowerCase() === convertedPattern.toLowerCase()) return true;
+
         // 2. Identify if it's a regex or a cucumber expression
         const isRegex = convertedPattern.includes('(') ||
             convertedPattern.includes('\\d') ||
@@ -88,24 +91,26 @@ export class StepMatcher {
             convertedPattern = convertedPattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         }
 
-        // 4. Transform all known placeholders into regex groups
+        // 3. Transform placeholders into regex groups
+        // Note: Use ([^"]*) for strings to be more specific than .*
         convertedPattern = convertedPattern
             .replace(/\\\{int\\\}/g, '\\d+').replace(/\{int\}/g, '\\d+')
+            .replace(/\\\{float\\\}/g, '[\\d\\.]+').replace(/\{float\}/g, '[\\d\\.]+')
+            .replace(/\\\{word\\\}/g, '[^\\s]+').replace(/\{word\}/g, '[^\\s]+')
+            // Revert {string} to .* to ensure it captures "quoted text"
             .replace(/\\\{string\\\}/g, '.*').replace(/\{string\}/g, '.*')
+            .replace(/\\\{count:d\\\}/g, '\\d+')
             .replace(/\\\{[\w:]+\\\}/g, '.*').replace(/\{[\w:]+\}/g, '.*');
-
-        // 5. Normalize Gherkin <param> into a Regex group that matches the Code definition
-        // This allows a Scenario Outline step to match a (\d+) or (.*) definition.
-        const finalStep = cleanStep.replace(/<[^>]+>/g, '###PARAM###');
-        const finalPattern = convertedPattern
-            .replace(/\(\\d\+\)/g, '(###PARAM###|\\d+)')
-            .replace(/\(\.\*\)/g, '(###PARAM###|.*)');
+        // 4. Handle Scenario Outline parameters <param> vs code regex (\d+)
+        // We allow (\d+) to match either a digit OR a <parameter> placeholder
+        convertedPattern = convertedPattern
+            .replace(/\(\\d\+\)/g, '(\\d+|<[^>]+>)')
+            .replace(/\(\.\*\)/g, '(.*|<[^>]+>)');
 
         try {
-            const suffix = finalPattern.endsWith(' ') ? '.*' : '';
-            const finalRegex = new RegExp(`^${finalPattern.replace(/###PARAM###/g, '<[^>]+>|\\d+|.*')}${suffix}$`, 'i');
-
-            return finalRegex.test(finalStep);
+            const suffix = convertedPattern.endsWith(' ') ? '.*' : '';
+            const finalRegex = new RegExp(`^${convertedPattern}${suffix}$`, 'i');
+            return finalRegex.test(cleanStep);
         } catch (e) { return false; }
     }
 
@@ -143,10 +148,7 @@ export class StepMatcher {
      */
     public static getSourceRegex(extensionPath: string): RegExp {
         const keywords = this.getKeywords(extensionPath);
-        // 1. (?:@|\\s*\\[) -> Matches either @ (Java/Python) or [ (C#)
-        // 2. (?:${keywords}|StepDefinition) -> The Gherkin keyword
-        // 3. [^"']*? -> Non-greedy skip that CANNOT skip past a quote
-        // 4. [@$]? -> Matches C# verbatim (@) or interpolated ($) string markers
-        return new RegExp(`(?:@|\\s*\\[)(?:${keywords}|StepDefinition)[^"']*?[@$]?(['"])(.*?)\\1`, 'gi');
+        // Updated to allow spaces/parens before the quote for C# compatibility
+        return new RegExp(`(?:@|\\s*\\[)(?:${keywords}|StepDefinition)\\s*\\(?\\s*[@$]?(['"])(.*?)\\1`, 'gi');
     }
 }
