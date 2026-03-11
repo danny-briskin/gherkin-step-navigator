@@ -1,6 +1,7 @@
 import * as assert from 'assert';
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { StepMatcher } from '../../matcher';
 
 suite('Extension Integration Tests', () => {
     test('F12 Go to Definition should find C# step', async function () {
@@ -30,7 +31,7 @@ suite('Extension Integration Tests', () => {
     test('F12: Should resolve C# step with regex parameters', async function () {
         // Add this inside your test to see what the indexer sees
         const files = await vscode.workspace.findFiles('**/*.cs');
-        
+
         const extension = vscode.extensions.getExtension('DannyBriskin.gherkin-step-navigator');
         const fixturePath = path.join(extension!.extensionPath, 'out', 'test', 'fixtures');
         const featureUri = vscode.Uri.file(path.join(fixturePath, 'csharp_test.feature'));
@@ -52,5 +53,14 @@ suite('Extension Integration Tests', () => {
 
         assert.ok(locations && locations.length > 0,
             `Failed at line ${position.line}. Ensure this line in the .feature file matches a [Given/When/Then] in your .cs file.`);
+    });
+
+    test('F12: Should resolve Scenario Outline steps with <parameters>', async () => {
+        const mockContent = `[StepDefinition(@"User can see (\\d+) products")]`;
+        const pattern = "User can see (\\d+) products";
+        const gherkinStep = "Then User can see <NumberOfProducts> products";
+
+        const isMatch = StepMatcher.isMatch(gherkinStep, pattern, 'dummy/path');
+        assert.strictEqual(isMatch, true, "Scenario Outline parameter <NumberOfProducts> failed to match regex (\\d+)");
     });
 });

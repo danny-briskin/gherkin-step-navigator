@@ -91,21 +91,21 @@ export class StepMatcher {
         // 4. Transform all known placeholders into regex groups
         convertedPattern = convertedPattern
             .replace(/\\\{int\\\}/g, '\\d+').replace(/\{int\}/g, '\\d+')
-            .replace(/\\\{float\\\}/g, '[\\d\\.]+').replace(/\{float\}/g, '[\\d\\.]+')
-            .replace(/\\\{word\\\}/g, '[^\\s]+').replace(/\{word\}/g, '[^\\s]+')
             .replace(/\\\{string\\\}/g, '.*').replace(/\{string\}/g, '.*')
-            .replace(/\\\{count:d\\\}/g, '\\d+')
             .replace(/\\\{[\w:]+\\\}/g, '.*').replace(/\{[\w:]+\}/g, '.*');
 
+        // 5. Normalize Gherkin <param> into a Regex group that matches the Code definition
+        // This allows a Scenario Outline step to match a (\d+) or (.*) definition.
+        const finalStep = cleanStep.replace(/<[^>]+>/g, '###PARAM###');
+        const finalPattern = convertedPattern
+            .replace(/\(\\d\+\)/g, '(###PARAM###|\\d+)')
+            .replace(/\(\.\*\)/g, '(###PARAM###|.*)');
+
         try {
-            // Restore anchors but allow trailing wildcards for C# prefix patterns
-            // If the pattern ends in a space, it likely expects a parameter.
-            const suffix = convertedPattern.endsWith(' ') ? '.*' : '';
-            const finalRegex = new RegExp(`^${convertedPattern}${suffix}$`, 'i');
+            const suffix = finalPattern.endsWith(' ') ? '.*' : '';
+            const finalRegex = new RegExp(`^${finalPattern.replace(/###PARAM###/g, '<[^>]+>|\\d+|.*')}${suffix}$`, 'i');
 
-            const result = finalRegex.test(cleanStep);
-
-            return result;
+            return finalRegex.test(finalStep);
         } catch (e) { return false; }
     }
 

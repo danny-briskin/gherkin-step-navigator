@@ -3,7 +3,7 @@
   "displayName": "Gherkin Step Navigator",
   "description": "Navigate from Gherkin feature steps to code.",
   "icon": "icon.png",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "publisher": "DannyBriskin",
   "author": {
     "name": "Danny Briskin"

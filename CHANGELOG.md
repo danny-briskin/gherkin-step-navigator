@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.2
+### Fixes & Improvements
+- Scenario Outline Parameter <parameter> placeholders Support in Gherkin steps.
+
 ## 1.0.1
 ### New Features
 - Contextual Tag Alignment: Tags now automatically inherit the indentation level of the following element (Feature, Scenario, Example, etc).
