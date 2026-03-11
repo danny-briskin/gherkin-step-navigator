@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.3
+### Fixes & Improvements
+- Ambiguous Step Resolution: Fixed a bug where steps like "User can see given..." incorrectly matched regex definitions like "User can see (\d+)...".
+
 ## 1.0.2
 ### Fixes & Improvements
 - Scenario Outline Parameter <parameter> placeholders Support in Gherkin steps.

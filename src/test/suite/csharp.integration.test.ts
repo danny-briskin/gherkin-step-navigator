@@ -63,4 +63,21 @@ suite('Extension Integration Tests', () => {
         const isMatch = StepMatcher.isMatch(gherkinStep, pattern, 'dummy/path');
         assert.strictEqual(isMatch, true, "Scenario Outline parameter <NumberOfProducts> failed to match regex (\\d+)");
     });
+    test('F12: Should prioritize literal match over conflicting regex (\d+)', async () => {
+        const extensionPath = 'dummy/path';
+        const gherkinStep = "Then User can see given servers in the Create Job filtered table";
+
+        // The two conflicting definitions found in the source code
+        const literalPattern = "User can see given servers in the Create Job filtered table";
+        const regexPattern = "User can see (\\d+) servers in the Create Job filtered table";
+
+        // 1. Test the literal match (Should be TRUE)
+        const isLiteralMatch = StepMatcher.isMatch(gherkinStep, literalPattern, extensionPath);
+        assert.strictEqual(isLiteralMatch, true, "Literal pattern should match the exact step text");
+
+        // 2. Test the regex match (Should be FALSE)
+        // "given" is not a digit, so (\d+) should reject this match.
+        const isRegexMatch = StepMatcher.isMatch(gherkinStep, regexPattern, extensionPath);
+        assert.strictEqual(isRegexMatch, false, "Regex pattern with (\\d+) should NOT match the word 'given'");
+    });
 });
