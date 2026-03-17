@@ -3,7 +3,7 @@
   "displayName": "Gherkin Step Navigator",
   "description": "Navigate from Gherkin feature steps to code.",
   "icon": "icon.png",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "publisher": "DannyBriskin",
   "author": {
     "name": "Danny Briskin"
@@ -90,12 +90,16 @@
     "@types/node": "^25.3.1",
     "@types/vscode": "^1.97.0",
     "copyfiles": "^2.4.1",
+    "diff": ">=8.0.3",
     "esbuild": "^0.27.3",
     "glob": "^13.0.6",
+    "serialize-javascript": ">=7.0.3",
     "typescript": "^5.7.3"
   },
   "dependencies": {
+    "diff": ">=8.0.3",
     "glob": "^10.0.0",
-    "mocha": "^11.7.5"
+    "mocha": "^11.7.5",
+    "serialize-javascript": ">=7.0.3"
   }
 }
