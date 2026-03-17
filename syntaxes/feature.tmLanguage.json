@@ -97,6 +97,9 @@
       "name": "string.quoted.double",
       "patterns": [
         {
+          "include": "#scenario_outline_variable"
+        },
+        {
           "match": "\\\\.",
           "name": "constant.character.escape.untitled"
         }
@@ -108,8 +111,11 @@
       "name": "string.quoted.single",
       "patterns": [
         {
+          "include": "#scenario_outline_variable"
+        },
+        {
           "match": "\\\\.",
-          "name": "constant.character.escape"
+          "name": "constant.character.escape.untitled"
         }
       ]
     },
