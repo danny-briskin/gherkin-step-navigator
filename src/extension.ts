@@ -1,7 +1,7 @@
-import * as vscode from 'vscode';
 import * as path from 'path';
+import * as vscode from 'vscode';
+import { DEFAULT_INDENT, GherkinFormatter } from './formatter';
 import { StepMatcher } from './matcher';
-import { GherkinFormatter } from './formatter';
 
 /**
  * In-memory cache to store step definitions for instant F12 lookups.
@@ -53,7 +53,18 @@ export async function activate(context: vscode.ExtensionContext) {
     vscode.languages.registerDocumentFormattingEditProvider('gherkin', {
       provideDocumentFormattingEdits(document) {
         const keywords = StepMatcher.getFormattingKeywords(extensionPath);
-        return keywords ? GherkinFormatter.format(document, keywords) : [];
+        const cfg = vscode.workspace.getConfiguration('gherkinStepNavigator.indent');
+        const indent = {
+          FEATURE: 0,
+          ELEMENT: cfg.get<number>('scenario', DEFAULT_INDENT.ELEMENT),
+          STEP: cfg.get<number>('step', DEFAULT_INDENT.STEP),
+          TABLE: cfg.get<number>('table', DEFAULT_INDENT.TABLE),
+          DOCSTRING: cfg.get<number>('docstring', DEFAULT_INDENT.DOCSTRING),
+          TAG: cfg.get<number>('tag', DEFAULT_INDENT.TAG),
+          COMMENT: cfg.get<number>('comment', DEFAULT_INDENT.COMMENT),
+          TABLE_COMMENT: cfg.get<number>('tableComment', DEFAULT_INDENT.TABLE_COMMENT),
+        };
+        return keywords ? GherkinFormatter.format(document, keywords, indent) : [];
       }
     }),
 

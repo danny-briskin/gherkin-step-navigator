@@ -3,7 +3,7 @@
   "displayName": "Gherkin Step Navigator",
   "description": "Navigate from Gherkin feature steps to code.",
   "icon": "icon.png",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "publisher": "DannyBriskin",
   "author": {
     "name": "Danny Briskin"
@@ -74,6 +74,55 @@
           "items": {
             "type": "string"
           }
+        },
+        "gherkinStepNavigator.indent.scenario": {
+          "type": "integer",
+          "default": 2,
+          "minimum": 0,
+          "maximum": 16,
+          "description": "Spaces before Scenario, Background, and Examples blocks."
+        },
+        "gherkinStepNavigator.indent.step": {
+          "type": "integer",
+          "default": 4,
+          "minimum": 0,
+          "maximum": 16,
+          "description": "Spaces before Given/When/Then/And/But steps."
+        },
+        "gherkinStepNavigator.indent.table": {
+          "type": "integer",
+          "default": 6,
+          "minimum": 0,
+          "maximum": 16,
+          "description": "Spaces before table rows (| col | col |)."
+        },
+        "gherkinStepNavigator.indent.tableComment": {
+          "type": "integer",
+          "default": 6,
+          "minimum": 0,
+          "maximum": 16,
+          "description": "Spaces before table comments (# | ... |)."
+        },
+        "gherkinStepNavigator.indent.docstring": {
+          "type": "integer",
+          "default": 6,
+          "minimum": 0,
+          "maximum": 16,
+          "description": "Spaces before Documentation lines."
+        },
+        "gherkinStepNavigator.indent.tag": {
+          "type": "integer",
+          "default": 2,
+          "minimum": 0,
+          "maximum": 16,
+          "description": "Spaces before tags (@tagName). Tags attached to a Feature/Scenario inherit its indentation."
+        },
+        "gherkinStepNavigator.indent.comment": {
+          "type": "integer",
+          "default": 4,
+          "minimum": 0,
+          "maximum": 16,
+          "description": "Spaces before isolated comments (# ...). Comments preceding a block inherit its indentation."
         }
       }
     }

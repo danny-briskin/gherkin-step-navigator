@@ -2,7 +2,7 @@ import * as assert from 'assert';
 import * as path from 'path';
 import * as vscode from 'vscode';
 
-import { GherkinFormatter } from '../../formatter';
+import { DEFAULT_INDENT, GherkinFormatter } from '../../formatter';
 import { StepMatcher } from '../../matcher';
 
 suite('Gherkin Formatter Integration Test Suite', () => {
@@ -316,5 +316,49 @@ Scenario: Empty lines
         assert.strictEqual(lines[1].length, 0, "Line 1 should be empty");
         assert.strictEqual(lines[3].length, 0, "Line 3 should be empty");
         assert.strictEqual(lines[5].length, 0, "Line 5 should be empty");
+    });
+
+    test('Custom indent: Should apply per-element indentation when configured', () => {
+        const content =
+            `Feature: Custom Indent
+Scenario: Steps and table
+Given a step
+| col1 | col2 |
+| a    | b    |`;
+
+        const doc = mockDocument(content);
+        const customIndent = { ...DEFAULT_INDENT, ELEMENT: 4, STEP: 8, TABLE: 12, TABLE_COMMENT: 12 };
+        const edits = GherkinFormatter.format(doc, keywords, customIndent);
+        const result = applyEdits(content, edits);
+        const lines = result.split('\n');
+
+        // Feature: always 0
+        assert.strictEqual(lines[0], 'Feature: Custom Indent', 'Feature should stay at 0');
+        // Scenario: ELEMENT = 4
+        assert.strictEqual(lines[1], '    Scenario: Steps and table', 'Scenario should be 4 spaces');
+        // Step: STEP = 8
+        assert.strictEqual(lines[2], '        Given a step', 'Step should be 8 spaces');
+        // Table: TABLE = 12
+        const tableIndent = lines[3].length - lines[3].trimStart().length;
+        assert.strictEqual(tableIndent, 12, 'Table should be 12 spaces');
+    });
+
+    test('Custom indent: Should allow table comments to differ from table rows', () => {
+        const content =
+            `Scenario: Table comment indent
+| col1 |
+# | note |
+| row1 |`;
+
+        const doc = mockDocument(content);
+        const customIndent = { ...DEFAULT_INDENT, TABLE: 10, TABLE_COMMENT: 2 };
+        const edits = GherkinFormatter.format(doc, keywords, customIndent);
+        const result = applyEdits(content, edits);
+        const lines = result.split('\n');
+
+        assert.strictEqual(lines[0], '  Scenario: Table comment indent', 'Scenario should keep its default indentation');
+        assert.strictEqual(lines[1].length - lines[1].trimStart().length, 10, 'Table row should use TABLE indent');
+        assert.strictEqual(lines[2].length - lines[2].trimStart().length, 2, 'Table comment should use TABLE_COMMENT indent');
+        assert.strictEqual(lines[3].length - lines[3].trimStart().length, 10, 'Following table row should still use TABLE indent');
     });
 });
