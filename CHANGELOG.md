@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.6
+### New Features
+- Configurable Formatter Indentation: Added individual VS Code settings to control indentation for each Gherkin element type (`indent.scenario`, `indent.step`, `indent.table`, `indent.tableComment`, `indent.docstring`, `indent.tag`, `indent.comment`). Each level can now be set independently under `gherkinStepNavigator.indent.*`.
+
 ## 1.0.5
 ### Fixes & Improvements
 - Nested Syntax Highlighting: Fixed an issue where Scenario Outline parameters (e.g., `<param>`) were not correctly colorized when placed inside quoted strings.

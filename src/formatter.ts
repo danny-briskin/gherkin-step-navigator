@@ -22,9 +22,21 @@ interface LineContext {
 }
 
 /**
- * Default indentation levels for different Gherkin elements.
+ * Indentation (in spaces) for each Gherkin element type.
+ * Can be individually configured via extension settings.
  */
-const INDENT = {
+export interface Indent {
+    FEATURE: number;
+    ELEMENT: number;
+    STEP: number;
+    DOCSTRING: number;
+    TABLE: number;
+    COMMENT: number;
+    TAG: number;
+    TABLE_COMMENT: number;
+}
+
+export const DEFAULT_INDENT: Indent = {
     FEATURE: 0,
     ELEMENT: 2,
     STEP: 4,
@@ -41,17 +53,19 @@ export class GherkinFormatter {
      * Entry point for formatting a Gherkin document.
      * @param document The VS Code TextDocument to format.
      * @param keywords The language-specific keywords to use for identification.
+     * @param indent Per-element indentation settings (defaults to DEFAULT_INDENT).
      * @returns An array of TextEdits to be applied to the document.
      */
-    public static format(document: vscode.TextDocument, keywords: GherkinKeywords): vscode.TextEdit[] {
+    public static format(document: vscode.TextDocument, keywords: GherkinKeywords, indent: Indent = DEFAULT_INDENT): vscode.TextEdit[] {
+
         // 1. Initial pass to identify the type of every line
-        const contextMap = this.scanDocument(document, keywords);
+        const contextMap = this.scanDocument(document, keywords, indent);
 
         // 2. Adjust indentation based on document structure (e.g., tags anchoring to elements)
-        this.resolveIndentation(contextMap);
+        this.resolveIndentation(contextMap, indent);
 
         // 3. Align table pipes and handle table-specific comments
-        this.normalizeTables(contextMap);
+        this.normalizeTables(contextMap, indent);
 
         // 4. Transform metadata into VS Code TextEdit instructions
         return this.generateEdits(document, contextMap);
@@ -60,10 +74,10 @@ export class GherkinFormatter {
     /**
      * Iterates through the document to create a metadata map of all lines.
      */
-    private static scanDocument(document: vscode.TextDocument, keywords: GherkinKeywords): LineContext[] {
+    private static scanDocument(document: vscode.TextDocument, keywords: GherkinKeywords, indent: Indent): LineContext[] {
         return Array.from({ length: document.lineCount }, (_, i) => {
             const rawLine = document.lineAt(i).text;
-            const ctx = this.identifyLine(i, rawLine, keywords);
+            const ctx = this.identifyLine(i, rawLine, keywords, indent);
             // Default indent to 0 for empty lines, -1 (to be resolved) for others
             ctx.indent = ctx.type === 'empty' ? 0 : -1;
             return ctx;
@@ -75,7 +89,7 @@ export class GherkinFormatter {
      * Uses a loop to ensure that "floating" elements like tags and comments stabilize
      * based on the indentation of the elements they anchor to.
      */
-    private static resolveIndentation(contextMap: LineContext[]): void {
+    private static resolveIndentation(contextMap: LineContext[], indent: Indent): void {
         let changed = true;
         while (changed) {
             changed = false;
@@ -85,19 +99,21 @@ export class GherkinFormatter {
 
                 let newIndent: number;
 
-                if (current.type === 'table' || current.type === 'table-comment') {
-                    newIndent = INDENT.TABLE;
+                if (current.type === 'table') {
+                    newIndent = indent.TABLE;
+                } else if (current.type === 'table-comment') {
+                    newIndent = indent.TABLE_COMMENT;
                 } else if (current.type === 'element') {
-                    newIndent = INDENT.ELEMENT;
+                    newIndent = indent.ELEMENT;
                 } else if (current.type === 'tag') {
                     // Tags should inherit the indentation of the next meaningful line (Scenario/Feature)
                     const next = contextMap.slice(i + 1).find(lc => lc.type !== 'empty');
                     newIndent = next ? next.indent : 0;
                 } else if (current.type === 'comment') {
                     // Standard comments use context-aware lookahead logic
-                    newIndent = this.calculateCommentIndent(contextMap, i);
+                    newIndent = this.calculateCommentIndent(contextMap, i, indent);
                 } else {
-                    newIndent = INDENT[current.type.toUpperCase() as keyof typeof INDENT] || 0;
+                    newIndent = current.type === 'step' ? indent.STEP : indent.FEATURE;
                 }
 
                 if (current.indent !== newIndent) {
@@ -112,7 +128,7 @@ export class GherkinFormatter {
      * Determines the indentation of a standard comment.
      * Anchors to the next meaningful line unless separated by an empty line (isolation).
      */
-    private static calculateCommentIndent(contextMap: LineContext[], i: number): number {
+    private static calculateCommentIndent(contextMap: LineContext[], i: number, indent: Indent): number {
         // Find the next line that isn't empty or a comment
         const nextMeaningful = contextMap.slice(i + 1).find(lc =>
             lc.type !== 'empty' &&
@@ -129,19 +145,19 @@ export class GherkinFormatter {
             return nextMeaningful.indent;
         }
 
-        // Default to 4 spaces for isolated comments or trailing comments
-        return INDENT.COMMENT;
+        // Default to step-level indentation for isolated or trailing comments
+        return indent.COMMENT;
     }
 
     /**
      * Identifies contiguous blocks of tables/table-comments and aligns them.
      */
-    private static normalizeTables(contextMap: LineContext[]): void {
+    private static normalizeTables(contextMap: LineContext[], indent: Indent): void {
         let i = 0;
         while (i < contextMap.length) {
             if (contextMap[i].type === 'table' || contextMap[i].type === 'table-comment') {
                 const blockIndices = this.getTableBlockIndices(contextMap, i);
-                this.alignTableBlock(contextMap, blockIndices);
+                this.alignTableBlock(contextMap, blockIndices, indent);
                 i += blockIndices.length; // Skip the rest of the processed block
             } else {
                 i++;
@@ -165,7 +181,7 @@ export class GherkinFormatter {
     /**
      * Aligns table columns by calculating the maximum width for each column in the block.
      */
-    private static alignTableBlock(contextMap: LineContext[], indices: number[]): void {
+    private static alignTableBlock(contextMap: LineContext[], indices: number[], indent: Indent): void {
         const columnWidths: number[] = [];
 
         // Pass 1: Measure maximum width for each column
@@ -185,7 +201,7 @@ export class GherkinFormatter {
                     .trim();
             } else if (ctx.type === 'table-comment') {
                 // Table comments are preserved as-is but shifted to table indentation
-                ctx.text = ' '.repeat(INDENT.TABLE_COMMENT) + ctx.text.trimStart();
+                ctx.text = ' '.repeat(indent.TABLE_COMMENT) + ctx.text.trimStart();
             }
         });
     }
@@ -219,7 +235,7 @@ export class GherkinFormatter {
     /**
      * Uses regex and character matching to classify a line of text.
      */
-    private static identifyLine(index: number, text: string, keywords: GherkinKeywords): LineContext {
+    private static identifyLine(index: number, text: string, keywords: GherkinKeywords, indent: Indent): LineContext {
         // 1. Identify whitespace-only lines
         if (/^\s*$/.test(text)) {
             return { lineIndex: index, text: '', type: 'empty', indent: 0 };
@@ -228,24 +244,24 @@ export class GherkinFormatter {
         const trimmed = text.trim();
 
         // 2. Identify Tables
-        if (trimmed.startsWith('|')) return { lineIndex: index, text, type: 'table', indent: INDENT.TABLE };
+        if (trimmed.startsWith('|')) return { lineIndex: index, text, type: 'table', indent: indent.TABLE };
 
         // 3. Identify Comments (distinguish between standard and table-internal)
         if (trimmed.startsWith('#')) {
             return trimmed.includes('|')
-                ? { lineIndex: index, text, type: 'table-comment', indent: INDENT.TABLE }
-                : { lineIndex: index, text, type: 'comment', indent: INDENT.COMMENT };
+                ? { lineIndex: index, text, type: 'table-comment', indent: indent.TABLE_COMMENT }
+                : { lineIndex: index, text, type: 'comment', indent: indent.COMMENT };
         }
 
         // 4. Identify Tags
-        if (trimmed.startsWith('@')) return { lineIndex: index, text, type: 'tag', indent: INDENT.TAG };
+        if (trimmed.startsWith('@')) return { lineIndex: index, text, type: 'tag', indent: indent.TAG };
 
         // 5. Identify Features, Scenarios, and Steps using provided Gherkin grammar
-        if (keywords.features.test(trimmed)) return { lineIndex: index, text, type: 'feature', indent: INDENT.FEATURE };
-        if (keywords.elements.test(trimmed)) return { lineIndex: index, text, type: 'element', indent: INDENT.ELEMENT };
-        if (keywords.steps.test(trimmed)) return { lineIndex: index, text, type: 'step', indent: INDENT.STEP };
+        if (keywords.features.test(trimmed)) return { lineIndex: index, text, type: 'feature', indent: indent.FEATURE };
+        if (keywords.elements.test(trimmed)) return { lineIndex: index, text, type: 'element', indent: indent.ELEMENT };
+        if (keywords.steps.test(trimmed)) return { lineIndex: index, text, type: 'step', indent: indent.STEP };
 
         // 6. Default fallback for text that doesn't match standard patterns
-        return { lineIndex: index, text, type: 'step', indent: INDENT.STEP };
+        return { lineIndex: index, text, type: 'step', indent: indent.STEP };
     }
 }
