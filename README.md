@@ -9,6 +9,7 @@ Gherkin Step Navigator is a lightweight, high-performance VS Code extension that
 ## 🌟 Key Features
 
 - **Universal "Go to Definition" (F12):** Ctrl+Click any step in a `.feature` file to jump directly to the matching code implementation.
+- **Step Diagnostics:** Highlights unresolved steps and ambiguous matches directly inside `.feature` files.
 - **Intelligence Formatting:** - **Auto-Indentation:** Feature (0), Scenario (2), and Steps (4 spaces).
   - **Dynamic Table Alignment:** Vertically aligns pipes `|` based on column content width.
   - **DocStrings:** Properly indents triple quotes `"""` to 6 spaces.
@@ -58,6 +59,13 @@ The indexer scans your workspace based on these glob patterns. You can add speci
     "src/test/java/**/*.java",
     "features/steps/**/*.py"
 ]
+```
+
+### Diagnostics
+Enable or disable inline diagnostics for unresolved and ambiguous steps:
+
+```json
+"gherkinStepNavigator.diagnostics.enabled": true
 ```
 ---
 

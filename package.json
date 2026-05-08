@@ -3,7 +3,7 @@
   "displayName": "Gherkin Step Navigator",
   "description": "Navigate from Gherkin feature steps to code.",
   "icon": "icon.png",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "publisher": "DannyBriskin",
   "author": {
     "name": "Danny Briskin"
@@ -36,7 +36,7 @@
   },
   "bugs": {
     "url": "https://github.com/danny-briskin/gherkin-step-navigator/issues",
-    "email": "sql.caoch.kiev@gmail.com"
+    "email": "sql.coach.kiev@gmail.com"
   },
   "homepage": "https://github.com/danny-briskin/gherkin-step-navigator",
   "contributes": {
@@ -74,6 +74,11 @@
           "items": {
             "type": "string"
           }
+        },
+        "gherkinStepNavigator.diagnostics.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show diagnostics in .feature files for unresolved and ambiguous step definitions."
         },
         "gherkinStepNavigator.indent.scenario": {
           "type": "integer",

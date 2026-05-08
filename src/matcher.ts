@@ -52,7 +52,7 @@ export class StepMatcher {
                 .filter((k: string) => k.length > 0)
                 .map((k: string) => k === '*' ? '\\*' : k)
                 .join('|');
-            
+
             // Add StepDefinition to the returned string if it's not there
             if (!this.cachedKeywords!.includes('StepDefinition')) {
                 this.cachedKeywords += '|StepDefinition';
@@ -67,9 +67,7 @@ export class StepMatcher {
      * Supports Cucumber Expressions by converting placeholders into regex groups.
      */
     public static isMatch(stepText: string, pattern: string, extensionPath: string): boolean {
-        const keywords = this.getKeywords(extensionPath);
-        // Ensure the line actually starts with a valid Gherkin keyword
-        const keywordRegex = new RegExp(`^\\s*(?:${keywords})(?=\\s+|$)`, 'i');
+        const keywordRegex = this.getStepKeywordRegex(extensionPath);
         if (!keywordRegex.test(stepText.trimStart())) return false;
 
         // Remove the keyword to match only the unique part of the step
@@ -112,6 +110,18 @@ export class StepMatcher {
             const finalRegex = new RegExp(`^${convertedPattern}${suffix}$`, 'i');
             return finalRegex.test(cleanStep);
         } catch (e) { return false; }
+    }
+
+    /**
+     * Checks whether a line begins with a known Gherkin step keyword.
+     */
+    public static isStepLine(lineText: string, extensionPath: string): boolean {
+        return this.getStepKeywordRegex(extensionPath).test(lineText.trimStart());
+    }
+
+    private static getStepKeywordRegex(extensionPath: string): RegExp {
+        const keywords = this.getKeywords(extensionPath);
+        return new RegExp(`^\\s*(?:${keywords})(?=\\s+|$)`, 'i');
     }
 
     /**

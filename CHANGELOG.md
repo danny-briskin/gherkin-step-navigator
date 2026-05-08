@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.7
+### New Features
+- Step Diagnostics: Added inline diagnostics in `.feature` files for unresolved and ambiguous steps.
+
 ## 1.0.6
 ### New Features
 - Configurable Formatter Indentation: Added individual VS Code settings to control indentation for each Gherkin element type (`indent.scenario`, `indent.step`, `indent.table`, `indent.tableComment`, `indent.docstring`, `indent.tag`, `indent.comment`). Each level can now be set independently under `gherkinStepNavigator.indent.*`.

@@ -9,6 +9,11 @@ import { StepMatcher } from './matcher';
  */
 let stepCache = new Map<string, vscode.Location[]>();
 let indexingPromise: Promise<void> | null = null;
+let diagnosticsEnabled = true;
+
+interface DiagnosticsLifecycleState {
+  disposed: boolean;
+}
 
 /**
  * Normalizes file paths for reliable Map lookups.
@@ -24,6 +29,18 @@ function normalizePath(fsPath: string): string {
 export async function activate(context: vscode.ExtensionContext) {
   const extensionPath = context.extensionPath;
   const config = vscode.workspace.getConfiguration('gherkinStepNavigator');
+  diagnosticsEnabled = config.get<boolean>('diagnostics.enabled', true);
+  const diagnostics = vscode.languages.createDiagnosticCollection('gherkinStepNavigator');
+  context.subscriptions.push(diagnostics);
+  const diagnosticsRefreshTimer = new Map<string, ReturnType<typeof setTimeout>>();
+  const diagnosticsLifecycle: DiagnosticsLifecycleState = { disposed: false };
+  context.subscriptions.push(new vscode.Disposable(() => {
+    diagnosticsLifecycle.disposed = true;
+    for (const timer of diagnosticsRefreshTimer.values()) {
+      clearTimeout(timer);
+    }
+    diagnosticsRefreshTimer.clear();
+  }));
 
   // Load user patterns or fall back to defaults for Python, Java, and C#
   const patterns = config.get<string[]>('stepFilePattern') || ["**/*.py", "**/*.java", "**/*Steps.cs"];
@@ -35,17 +52,58 @@ export async function activate(context: vscode.ExtensionContext) {
   patterns.forEach(pattern => {
     const watcher = vscode.workspace.createFileSystemWatcher(pattern);
 
-    watcher.onDidChange(uri => indexFile(uri, extensionPath));
-    watcher.onDidCreate(uri => indexFile(uri, extensionPath));
-    watcher.onDidDelete(uri => clearPathFromCache(uri));
+    watcher.onDidChange(async uri => {
+      if (diagnosticsLifecycle.disposed) return;
+      await indexFile(uri, extensionPath);
+      await refreshAllOpenGherkinDiagnostics(extensionPath, diagnostics, diagnosticsLifecycle);
+    });
+    watcher.onDidCreate(async uri => {
+      if (diagnosticsLifecycle.disposed) return;
+      await indexFile(uri, extensionPath);
+      await refreshAllOpenGherkinDiagnostics(extensionPath, diagnostics, diagnosticsLifecycle);
+    });
+    watcher.onDidDelete(uri => {
+      if (diagnosticsLifecycle.disposed) return;
+      clearPathFromCache(uri);
+      void refreshAllOpenGherkinDiagnostics(extensionPath, diagnostics, diagnosticsLifecycle);
+    });
 
     context.subscriptions.push(watcher);
   });
 
   // Explicitly handle folder deletions which file-specific watchers often miss
   const folderWatcher = vscode.workspace.createFileSystemWatcher('**/');
-  folderWatcher.onDidDelete(uri => clearPathFromCache(uri));
+  folderWatcher.onDidDelete(uri => {
+    if (diagnosticsLifecycle.disposed) return;
+    clearPathFromCache(uri);
+    void refreshAllOpenGherkinDiagnostics(extensionPath, diagnostics, diagnosticsLifecycle);
+  });
   context.subscriptions.push(folderWatcher);
+
+  context.subscriptions.push(vscode.workspace.onDidOpenTextDocument(document => {
+    if (diagnosticsLifecycle.disposed) return;
+    if (document.languageId === 'gherkin') {
+      queueDiagnosticsRefresh(document, extensionPath, diagnostics, diagnosticsRefreshTimer, diagnosticsLifecycle);
+    }
+  }));
+
+  context.subscriptions.push(vscode.workspace.onDidChangeTextDocument(event => {
+    if (diagnosticsLifecycle.disposed) return;
+    if (event.document.languageId === 'gherkin') {
+      queueDiagnosticsRefresh(event.document, extensionPath, diagnostics, diagnosticsRefreshTimer, diagnosticsLifecycle);
+    }
+  }));
+
+  context.subscriptions.push(vscode.workspace.onDidCloseTextDocument(document => {
+    if (diagnosticsLifecycle.disposed) return;
+    diagnostics.delete(document.uri);
+    const key = document.uri.toString();
+    const existing = diagnosticsRefreshTimer.get(key);
+    if (existing) {
+      clearTimeout(existing);
+      diagnosticsRefreshTimer.delete(key);
+    }
+  }));
 
   // Register Language Features
   context.subscriptions.push(
@@ -87,6 +145,102 @@ export async function activate(context: vscode.ExtensionContext) {
       }
     })
   );
+
+  await refreshAllOpenGherkinDiagnostics(extensionPath, diagnostics, diagnosticsLifecycle);
+}
+
+function queueDiagnosticsRefresh(
+  document: vscode.TextDocument,
+  extensionPath: string,
+  diagnostics: vscode.DiagnosticCollection,
+  diagnosticsRefreshTimer: Map<string, ReturnType<typeof setTimeout>>,
+  diagnosticsLifecycle: DiagnosticsLifecycleState
+) {
+  if (diagnosticsLifecycle.disposed) return;
+
+  if (!diagnosticsEnabled) {
+    diagnostics.delete(document.uri);
+    return;
+  }
+
+  const key = document.uri.toString();
+  const existing = diagnosticsRefreshTimer.get(key);
+  if (existing) clearTimeout(existing);
+
+  diagnosticsRefreshTimer.set(
+    key,
+    setTimeout(async () => {
+      if (diagnosticsLifecycle.disposed) return;
+      diagnosticsRefreshTimer.delete(key);
+      await refreshDiagnostics(document, extensionPath, diagnostics, diagnosticsLifecycle);
+    }, 200)
+  );
+}
+
+async function refreshAllOpenGherkinDiagnostics(
+  extensionPath: string,
+  diagnostics: vscode.DiagnosticCollection,
+  diagnosticsLifecycle: DiagnosticsLifecycleState
+) {
+  if (diagnosticsLifecycle.disposed) return;
+
+  if (!diagnosticsEnabled) {
+    diagnostics.clear();
+    return;
+  }
+
+  for (const document of vscode.workspace.textDocuments) {
+    if (diagnosticsLifecycle.disposed) return;
+    if (document.languageId === 'gherkin') {
+      await refreshDiagnostics(document, extensionPath, diagnostics, diagnosticsLifecycle);
+    }
+  }
+}
+
+async function refreshDiagnostics(
+  document: vscode.TextDocument,
+  extensionPath: string,
+  diagnostics: vscode.DiagnosticCollection,
+  diagnosticsLifecycle: DiagnosticsLifecycleState
+) {
+  if (diagnosticsLifecycle.disposed) return;
+
+  if (indexingPromise) await indexingPromise;
+  if (diagnosticsLifecycle.disposed) return;
+
+  const docDiagnostics: vscode.Diagnostic[] = [];
+
+  for (let line = 0; line < document.lineCount; line++) {
+    const lineText = document.lineAt(line).text;
+    if (!StepMatcher.isStepLine(lineText, extensionPath)) continue;
+
+    let matchCount = 0;
+    for (const [pattern, locations] of stepCache.entries()) {
+      if (StepMatcher.isMatch(lineText, pattern, extensionPath)) {
+        matchCount += locations.length;
+      }
+    }
+
+    const firstNonWhitespace = lineText.search(/\S/);
+    const startCharacter = firstNonWhitespace >= 0 ? firstNonWhitespace : 0;
+    const range = new vscode.Range(line, startCharacter, line, lineText.length);
+
+    if (matchCount === 0) {
+      docDiagnostics.push(new vscode.Diagnostic(
+        range,
+        'No matching step definition found for this step.',
+        vscode.DiagnosticSeverity.Warning
+      ));
+    } else if (matchCount > 1) {
+      docDiagnostics.push(new vscode.Diagnostic(
+        range,
+        `Multiple step definitions match this step (${matchCount} matches).`,
+        vscode.DiagnosticSeverity.Information
+      ));
+    }
+  }
+
+  diagnostics.set(document.uri, docDiagnostics);
 }
 
 /**
