@@ -2,7 +2,7 @@
 
 ## 1.0.7
 ### New Features
-- Step Diagnostics: Added inline diagnostics in `.feature` files for unresolved and ambiguous steps.  Disabled by default (check `gherkinStepNavigator.diagnostics.enabled` settings)
+- Step Diagnostics: Added inline diagnostics in `.feature` files for unresolved and ambiguous steps.  Disabled by default (check `gherkinStepNavigator.diagnostics.enabled` settings), you may need window reload after update.
 
 ## 1.0.6
 ### New Features
