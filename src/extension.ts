@@ -4,25 +4,25 @@ import { DEFAULT_INDENT, GherkinFormatter } from './formatter';
 import { StepMatcher } from './matcher';
 
 /**
+ * Safely sets a value in stepCache, enforcing that only arrays are allowed.
+ * Logs an error and skips if a non-array is attempted.
+ */
+function setStepCache(pattern: string, locations: vscode.Location[]) {
+  if (!Array.isArray(locations)) {
+    // eslint-disable-next-line no-console
+    console.error('[stepCache] Attempted to set non-array value:', pattern, locations, new Error().stack);
+    return;
+  }
+  // eslint-disable-next-line no-console
+  console.debug('[stepCache] set', pattern, locations, new Error().stack);
+  stepCache.set(pattern, locations);
+}
+
+/**
  * In-memory cache to store step definitions for instant F12 lookups.
  * Maps step patterns (strings) to their physical locations in source code.
  */
 let stepCache = new Map<string, vscode.Location[]>();
-// DEBUG: Utility to log cache state
-function logStepCacheState(context: string) {
-  try {
-    const entries = Array.from(stepCache.entries()).map(([k, v]) => [k, Array.isArray(v) ? v.length : typeof v]);
-    // Only log if running in test or debug mode
-    if (process.env.NODE_ENV === 'test' || process.env.VSCODE_DEBUG_MODE || true) {
-      // Always log for now
-      // eslint-disable-next-line no-console
-      console.log(`[stepCache][${context}]`, entries);
-    }
-  } catch (e) {
-    // eslint-disable-next-line no-console
-    console.error(`[stepCache][${context}] ERROR`, e);
-  }
-}
 let indexingPromise: Promise<void> | null = null;
 let diagnosticsEnabled = true;
 
@@ -123,21 +123,19 @@ export async function activate(context: vscode.ExtensionContext) {
       async provideDefinition(document, position) {
         // Ensure initial indexing is complete before searching
         if (indexingPromise) await indexingPromise;
-
         try {
           const lineText = document.lineAt(position.line).text;
           const results: vscode.Location[] = [];
-          // Defensive: snapshot the cache to avoid mutation during iteration
-          const cacheSnapshot = Array.from(stepCache.entries());
+          // Defensive: snapshot the cache and clone arrays to avoid mutation during iteration
+          const cacheSnapshot = Array.from(stepCache.entries()).map(([pattern, locations]) => [pattern, Array.isArray(locations) ? Array.from(locations) : []] as [string, vscode.Location[]]);
           for (const [pattern, locations] of cacheSnapshot) {
-            if (!Array.isArray(locations)) continue; // Defensive: skip non-arrays
+            if (!Array.isArray(locations)) continue;
             if (StepMatcher.isMatch(lineText, pattern, extensionPath)) {
               results.push(...locations);
             }
           }
           return results;
         } catch (e) {
-          // Defensive: never throw, always return []
           return [];
         }
       }
@@ -158,11 +156,16 @@ function updateDiagnostics(document: vscode.TextDocument, extensionPath: string,
     return;
   }
   const docDiagnostics: vscode.Diagnostic[] = [];
+  // Defensive: snapshot all entries
+  const cacheSnapshot = Array.from(stepCache.entries());
+  // eslint-disable-next-line no-console
+  console.debug('[stepCache] updateDiagnostics snapshot', cacheSnapshot.map(([p, v]) => [p, Array.isArray(v), v && typeof v, v && v.length]));
   for (let line = 0; line < document.lineCount; line++) {
     const lineText = document.lineAt(line).text;
     if (!StepMatcher.isStepLine(lineText, extensionPath)) continue;
     let matchCount = 0;
-    for (const [pattern, locations] of stepCache.entries()) {
+    for (const [pattern, locations] of cacheSnapshot) {
+      if (!Array.isArray(locations)) continue;
       if (StepMatcher.isMatch(lineText, pattern, extensionPath)) {
         matchCount += locations.length;
       }
@@ -198,6 +201,7 @@ function updateAllDiagnostics(extensionPath: string, diagnostics: vscode.Diagnos
 async function indexWorkspaceAndDiagnostics(extensionPath: string, patterns: string[], diagnostics: vscode.DiagnosticCollection) {
   for (const pattern of patterns) {
     const files = await vscode.workspace.findFiles(pattern, '**/node_modules/**');
+    // Sequentially index each file to avoid parallel mutation
     for (const file of files) {
       await indexFileAndDiagnostics(file, extensionPath, diagnostics);
     }
@@ -205,9 +209,14 @@ async function indexWorkspaceAndDiagnostics(extensionPath: string, patterns: str
   indexingPromise = null;
 }
 
+let indexFileAndDiagnosticsLock: Promise<void> = Promise.resolve();
 async function indexFileAndDiagnostics(uri: vscode.Uri, extensionPath: string, diagnostics: vscode.DiagnosticCollection) {
-  await indexFile(uri, extensionPath);
-  updateAllDiagnostics(extensionPath, diagnostics);
+  // Use a module-scoped lock to ensure only one indexFileAndDiagnostics runs at a time
+  indexFileAndDiagnosticsLock = indexFileAndDiagnosticsLock.then(async () => {
+    await indexFile(uri, extensionPath);
+    updateAllDiagnostics(extensionPath, diagnostics);
+  });
+  await indexFileAndDiagnosticsLock;
 }
 
 /**
@@ -232,7 +241,6 @@ async function indexFile(uri: vscode.Uri, extensionPath: string) {
 
   // Prevent duplicate entries if a file is modified
   clearPathFromCache(uri);
-  logStepCacheState('after clearPathFromCache');
 
   try {
     const content = await vscode.workspace.fs.readFile(uri);
@@ -258,9 +266,10 @@ async function indexFile(uri: vscode.Uri, extensionPath: string) {
 
         const pos = new vscode.Position(lineNum, charNum);
         let existing = stepCache.get(pattern);
-        if (!Array.isArray(existing)) existing = [];
-        stepCache.set(pattern, [...existing, new vscode.Location(uri, pos)]);
-        logStepCacheState(`set pattern: ${pattern}`);
+        if (!Array.isArray(existing)) {
+          existing = [];
+        }
+        setStepCache(pattern, [...existing, new vscode.Location(uri, pos)]);
       }
     }
   } catch (e) { }
@@ -273,14 +282,12 @@ async function indexFile(uri: vscode.Uri, extensionPath: string) {
 function clearPathFromCache(uri: vscode.Uri) {
   const targetPath = normalizePath(uri.fsPath);
   const sep = path.sep.toLowerCase();
-
-  for (const [pattern, locations] of stepCache.entries()) {
-    if (!Array.isArray(locations)) {
-      // eslint-disable-next-line no-console
-      console.warn(`[stepCache] Non-array value for pattern '${pattern}':`, locations);
-      stepCache.delete(pattern);
-      continue;
-    }
+  // Defensive: snapshot all entries
+  const cacheSnapshot = Array.from(stepCache.entries());
+  // eslint-disable-next-line no-console
+  console.debug('[stepCache] clearPathFromCache snapshot', cacheSnapshot.map(([p, v]) => [p, Array.isArray(v), v && typeof v, v && v.length]));
+  for (const [pattern, locations] of cacheSnapshot) {
+    if (!Array.isArray(locations)) continue;
     const filtered = locations.filter(loc => {
       const locPath = normalizePath(loc.uri.fsPath);
       // Match exact files or files residing inside a deleted folder path
@@ -291,9 +298,7 @@ function clearPathFromCache(uri: vscode.Uri) {
     if (Array.isArray(filtered) && filtered.length === 0) {
       stepCache.delete(pattern);
     } else if (Array.isArray(filtered)) {
-      stepCache.set(pattern, filtered);
-      logStepCacheState(`filtered pattern: ${pattern}`);
+      setStepCache(pattern, filtered);
     }
   }
-  logStepCacheState('after clearPathFromCache loop');
 }
