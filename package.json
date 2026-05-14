@@ -135,7 +135,7 @@
   "scripts": {
     "bundle": "esbuild ./src/extension.ts --bundle --outfile=out/main.js --external:vscode --format=cjs --platform=node",
     "compile": "npm run bundle && tsc -p ./ && npm run copy-fixtures",
-    "copy-fixtures": "copyfiles -u 1 \"src/test/fixtures/**/*\" out/",
+    "copy-fixtures": "cpx \"src/test/fixtures/**/*\" out/",
     "pretest": "npm run compile"
   },
   "devDependencies": {
@@ -143,8 +143,7 @@
     "@types/mocha": "^10.0.10",
     "@types/node": "^25.3.1",
     "@types/vscode": "^1.97.0",
-    "copyfiles": "^2.4.1",
-    "diff": ">=8.0.3",
+    "cpx2": "^4.0.0",
     "esbuild": "^0.27.3",
     "glob": "^13.0.6",
     "serialize-javascript": ">=7.0.3",

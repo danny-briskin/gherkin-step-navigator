@@ -8,6 +8,21 @@ import { StepMatcher } from './matcher';
  * Maps step patterns (strings) to their physical locations in source code.
  */
 let stepCache = new Map<string, vscode.Location[]>();
+// DEBUG: Utility to log cache state
+function logStepCacheState(context: string) {
+  try {
+    const entries = Array.from(stepCache.entries()).map(([k, v]) => [k, Array.isArray(v) ? v.length : typeof v]);
+    // Only log if running in test or debug mode
+    if (process.env.NODE_ENV === 'test' || process.env.VSCODE_DEBUG_MODE || true) {
+      // Always log for now
+      // eslint-disable-next-line no-console
+      console.log(`[stepCache][${context}]`, entries);
+    }
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error(`[stepCache][${context}] ERROR`, e);
+  }
+}
 let indexingPromise: Promise<void> | null = null;
 let diagnosticsEnabled = true;
 
@@ -32,63 +47,27 @@ export async function activate(context: vscode.ExtensionContext) {
   diagnosticsEnabled = config.get<boolean>('diagnostics.enabled', true);
   const diagnostics = vscode.languages.createDiagnosticCollection('gherkinStepNavigator');
   context.subscriptions.push(diagnostics);
-  const diagnosticsRefreshTimer = new Map<string, ReturnType<typeof setTimeout>>();
-  const diagnosticsLifecycle: DiagnosticsLifecycleState = { disposed: false };
-  context.subscriptions.push(new vscode.Disposable(() => {
-    diagnosticsLifecycle.disposed = true;
-    for (const timer of diagnosticsRefreshTimer.values()) {
-      clearTimeout(timer);
-    }
-    diagnosticsRefreshTimer.clear();
-  }));
 
   // Load user patterns or fall back to defaults for Python, Java, and C#
   const patterns = config.get<string[]>('stepFilePattern') || ["**/*.py", "**/*.java", "**/*Steps.cs"];
 
 
-  // Start Background Indexing and schedule diagnostics refresh only after complete
-  indexingPromise = indexWorkspace(extensionPath, patterns).then(() => {
-    if (!diagnosticsLifecycle.disposed) {
-      refreshAllOpenGherkinDiagnostics(extensionPath, diagnostics, diagnosticsLifecycle);
-    }
-  });
-
-  // Debounced diagnostics refresh for watcher events
-  let watcherDiagnosticsTimeout: NodeJS.Timeout | null = null;
-  function scheduleDiagnosticsRefreshAfterIndexing() {
-    if (watcherDiagnosticsTimeout) clearTimeout(watcherDiagnosticsTimeout);
-    watcherDiagnosticsTimeout = setTimeout(() => {
-      if (diagnosticsLifecycle.disposed) return;
-      if (indexingPromise) {
-        indexingPromise.then(() => {
-          if (!diagnosticsLifecycle.disposed) {
-            refreshAllOpenGherkinDiagnostics(extensionPath, diagnostics, diagnosticsLifecycle);
-          }
-        });
-      } else {
-        refreshAllOpenGherkinDiagnostics(extensionPath, diagnostics, diagnosticsLifecycle);
-      }
-    }, 200);
-  }
+  // Index workspace and update diagnostics synchronously
+  indexingPromise = indexWorkspaceAndDiagnostics(extensionPath, patterns, diagnostics);
 
   // Setup File Watchers for each configured pattern
   patterns.forEach(pattern => {
     const watcher = vscode.workspace.createFileSystemWatcher(pattern);
 
     watcher.onDidChange(async uri => {
-      if (diagnosticsLifecycle.disposed) return;
-      await indexFile(uri, extensionPath);
-      scheduleDiagnosticsRefreshAfterIndexing();
+      await indexFileAndDiagnostics(uri, extensionPath, diagnostics);
     });
     watcher.onDidCreate(async uri => {
-      if (diagnosticsLifecycle.disposed) return;
-      await indexFile(uri, extensionPath);
-      scheduleDiagnosticsRefreshAfterIndexing();
+      await indexFileAndDiagnostics(uri, extensionPath, diagnostics);
     });
     watcher.onDidDelete(uri => {
-      if (diagnosticsLifecycle.disposed) return;
       clearPathFromCache(uri);
-      scheduleDiagnosticsRefreshAfterIndexing();
+      updateAllDiagnostics(extensionPath, diagnostics);
     });
 
     context.subscriptions.push(watcher);
@@ -97,35 +76,25 @@ export async function activate(context: vscode.ExtensionContext) {
   // Explicitly handle folder deletions which file-specific watchers often miss
   const folderWatcher = vscode.workspace.createFileSystemWatcher('**/');
   folderWatcher.onDidDelete(uri => {
-    if (diagnosticsLifecycle.disposed) return;
     clearPathFromCache(uri);
-    scheduleDiagnosticsRefreshAfterIndexing();
+    updateAllDiagnostics(extensionPath, diagnostics);
   });
   context.subscriptions.push(folderWatcher);
 
   context.subscriptions.push(vscode.workspace.onDidOpenTextDocument(document => {
-    if (diagnosticsLifecycle.disposed) return;
     if (document.languageId === 'gherkin') {
-      queueDiagnosticsRefresh(document, extensionPath, diagnostics, diagnosticsRefreshTimer, diagnosticsLifecycle);
+      updateDiagnostics(document, extensionPath, diagnostics);
     }
   }));
 
   context.subscriptions.push(vscode.workspace.onDidChangeTextDocument(event => {
-    if (diagnosticsLifecycle.disposed) return;
     if (event.document.languageId === 'gherkin') {
-      queueDiagnosticsRefresh(event.document, extensionPath, diagnostics, diagnosticsRefreshTimer, diagnosticsLifecycle);
+      updateDiagnostics(event.document, extensionPath, diagnostics);
     }
   }));
 
   context.subscriptions.push(vscode.workspace.onDidCloseTextDocument(document => {
-    if (diagnosticsLifecycle.disposed) return;
     diagnostics.delete(document.uri);
-    const key = document.uri.toString();
-    const existing = diagnosticsRefreshTimer.get(key);
-    if (existing) {
-      clearTimeout(existing);
-      diagnosticsRefreshTimer.delete(key);
-    }
   }));
 
   // Register Language Features
@@ -155,99 +124,52 @@ export async function activate(context: vscode.ExtensionContext) {
         // Ensure initial indexing is complete before searching
         if (indexingPromise) await indexingPromise;
 
-        const lineText = document.lineAt(position.line).text;
-        const results: vscode.Location[] = [];
-
-        // Scan the cache for patterns that match the current Gherkin step text
-        for (const [pattern, locations] of stepCache.entries()) {
-          if (StepMatcher.isMatch(lineText, pattern, extensionPath)) {
-            results.push(...locations);
+        try {
+          const lineText = document.lineAt(position.line).text;
+          const results: vscode.Location[] = [];
+          // Defensive: snapshot the cache to avoid mutation during iteration
+          const cacheSnapshot = Array.from(stepCache.entries());
+          for (const [pattern, locations] of cacheSnapshot) {
+            if (!Array.isArray(locations)) continue; // Defensive: skip non-arrays
+            if (StepMatcher.isMatch(lineText, pattern, extensionPath)) {
+              results.push(...locations);
+            }
           }
+          return results;
+        } catch (e) {
+          // Defensive: never throw, always return []
+          return [];
         }
-        return results.length > 0 ? results : null;
       }
     })
   );
 
-  await refreshAllOpenGherkinDiagnostics(extensionPath, diagnostics, diagnosticsLifecycle);
+  // No longer needed: diagnostics are updated synchronously during indexing and file updates
 }
 
-function queueDiagnosticsRefresh(
-  document: vscode.TextDocument,
-  extensionPath: string,
-  diagnostics: vscode.DiagnosticCollection,
-  diagnosticsRefreshTimer: Map<string, ReturnType<typeof setTimeout>>,
-  diagnosticsLifecycle: DiagnosticsLifecycleState
-) {
-  if (diagnosticsLifecycle.disposed) return;
 
+
+
+
+
+function updateDiagnostics(document: vscode.TextDocument, extensionPath: string, diagnostics: vscode.DiagnosticCollection) {
   if (!diagnosticsEnabled) {
     diagnostics.delete(document.uri);
     return;
   }
-
-  const key = document.uri.toString();
-  const existing = diagnosticsRefreshTimer.get(key);
-  if (existing) clearTimeout(existing);
-
-  diagnosticsRefreshTimer.set(
-    key,
-    setTimeout(async () => {
-      if (diagnosticsLifecycle.disposed) return;
-      diagnosticsRefreshTimer.delete(key);
-      await refreshDiagnostics(document, extensionPath, diagnostics, diagnosticsLifecycle);
-    }, 200)
-  );
-}
-
-async function refreshAllOpenGherkinDiagnostics(
-  extensionPath: string,
-  diagnostics: vscode.DiagnosticCollection,
-  diagnosticsLifecycle: DiagnosticsLifecycleState
-) {
-  if (diagnosticsLifecycle.disposed) return;
-
-  if (!diagnosticsEnabled) {
-    diagnostics.clear();
-    return;
-  }
-
-  for (const document of vscode.workspace.textDocuments) {
-    if (diagnosticsLifecycle.disposed) return;
-    if (document.languageId === 'gherkin') {
-      await refreshDiagnostics(document, extensionPath, diagnostics, diagnosticsLifecycle);
-    }
-  }
-}
-
-async function refreshDiagnostics(
-  document: vscode.TextDocument,
-  extensionPath: string,
-  diagnostics: vscode.DiagnosticCollection,
-  diagnosticsLifecycle: DiagnosticsLifecycleState
-) {
-  if (diagnosticsLifecycle.disposed) return;
-
-  if (indexingPromise) await indexingPromise;
-  if (diagnosticsLifecycle.disposed) return;
-
   const docDiagnostics: vscode.Diagnostic[] = [];
-
   for (let line = 0; line < document.lineCount; line++) {
     const lineText = document.lineAt(line).text;
     if (!StepMatcher.isStepLine(lineText, extensionPath)) continue;
-
     let matchCount = 0;
     for (const [pattern, locations] of stepCache.entries()) {
       if (StepMatcher.isMatch(lineText, pattern, extensionPath)) {
         matchCount += locations.length;
       }
     }
-
     const firstNonWhitespace = lineText.search(/\S/);
     const startCharacter = firstNonWhitespace >= 0 ? firstNonWhitespace : 0;
     const range = new vscode.Range(line, startCharacter, line, lineText.length);
-
     if (matchCount === 0) {
       docDiagnostics.push(new vscode.Diagnostic(
         range,
@@ -262,8 +184,30 @@ async function refreshDiagnostics(
       ));
     }
   }
-
   diagnostics.set(document.uri, docDiagnostics);
+}
+
+function updateAllDiagnostics(extensionPath: string, diagnostics: vscode.DiagnosticCollection) {
+  for (const document of vscode.workspace.textDocuments) {
+    if (document.languageId === 'gherkin') {
+      updateDiagnostics(document, extensionPath, diagnostics);
+    }
+  }
+}
+
+async function indexWorkspaceAndDiagnostics(extensionPath: string, patterns: string[], diagnostics: vscode.DiagnosticCollection) {
+  for (const pattern of patterns) {
+    const files = await vscode.workspace.findFiles(pattern, '**/node_modules/**');
+    for (const file of files) {
+      await indexFileAndDiagnostics(file, extensionPath, diagnostics);
+    }
+  }
+  indexingPromise = null;
+}
+
+async function indexFileAndDiagnostics(uri: vscode.Uri, extensionPath: string, diagnostics: vscode.DiagnosticCollection) {
+  await indexFile(uri, extensionPath);
+  updateAllDiagnostics(extensionPath, diagnostics);
 }
 
 /**
@@ -288,6 +232,7 @@ async function indexFile(uri: vscode.Uri, extensionPath: string) {
 
   // Prevent duplicate entries if a file is modified
   clearPathFromCache(uri);
+  logStepCacheState('after clearPathFromCache');
 
   try {
     const content = await vscode.workspace.fs.readFile(uri);
@@ -312,8 +257,10 @@ async function indexFile(uri: vscode.Uri, extensionPath: string) {
         const charNum = lines[lineNum].length;
 
         const pos = new vscode.Position(lineNum, charNum);
-        const existing = stepCache.get(pattern) || [];
+        let existing = stepCache.get(pattern);
+        if (!Array.isArray(existing)) existing = [];
         stepCache.set(pattern, [...existing, new vscode.Location(uri, pos)]);
+        logStepCacheState(`set pattern: ${pattern}`);
       }
     }
   } catch (e) { }
@@ -328,24 +275,25 @@ function clearPathFromCache(uri: vscode.Uri) {
   const sep = path.sep.toLowerCase();
 
   for (const [pattern, locations] of stepCache.entries()) {
+    if (!Array.isArray(locations)) {
+      // eslint-disable-next-line no-console
+      console.warn(`[stepCache] Non-array value for pattern '${pattern}':`, locations);
+      stepCache.delete(pattern);
+      continue;
+    }
     const filtered = locations.filter(loc => {
       const locPath = normalizePath(loc.uri.fsPath);
-
       // Match exact files or files residing inside a deleted folder path
       const isExactMatch = locPath === targetPath;
       const isInsideFolder = locPath.startsWith(targetPath + sep);
-
       return !isExactMatch && !isInsideFolder;
     });
-
-    if (filtered.length === 0) {
+    if (Array.isArray(filtered) && filtered.length === 0) {
       stepCache.delete(pattern);
-    } else {
+    } else if (Array.isArray(filtered)) {
       stepCache.set(pattern, filtered);
+      logStepCacheState(`filtered pattern: ${pattern}`);
     }
   }
-}
-
-export function deactivate() {
-  stepCache.clear();
+  logStepCacheState('after clearPathFromCache loop');
 }
