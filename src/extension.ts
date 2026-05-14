@@ -45,8 +45,31 @@ export async function activate(context: vscode.ExtensionContext) {
   // Load user patterns or fall back to defaults for Python, Java, and C#
   const patterns = config.get<string[]>('stepFilePattern') || ["**/*.py", "**/*.java", "**/*Steps.cs"];
 
-  // Start Background Indexing
-  indexingPromise = indexWorkspace(extensionPath, patterns);
+
+  // Start Background Indexing and schedule diagnostics refresh only after complete
+  indexingPromise = indexWorkspace(extensionPath, patterns).then(() => {
+    if (!diagnosticsLifecycle.disposed) {
+      refreshAllOpenGherkinDiagnostics(extensionPath, diagnostics, diagnosticsLifecycle);
+    }
+  });
+
+  // Debounced diagnostics refresh for watcher events
+  let watcherDiagnosticsTimeout: NodeJS.Timeout | null = null;
+  function scheduleDiagnosticsRefreshAfterIndexing() {
+    if (watcherDiagnosticsTimeout) clearTimeout(watcherDiagnosticsTimeout);
+    watcherDiagnosticsTimeout = setTimeout(() => {
+      if (diagnosticsLifecycle.disposed) return;
+      if (indexingPromise) {
+        indexingPromise.then(() => {
+          if (!diagnosticsLifecycle.disposed) {
+            refreshAllOpenGherkinDiagnostics(extensionPath, diagnostics, diagnosticsLifecycle);
+          }
+        });
+      } else {
+        refreshAllOpenGherkinDiagnostics(extensionPath, diagnostics, diagnosticsLifecycle);
+      }
+    }, 200);
+  }
 
   // Setup File Watchers for each configured pattern
   patterns.forEach(pattern => {
@@ -55,17 +78,17 @@ export async function activate(context: vscode.ExtensionContext) {
     watcher.onDidChange(async uri => {
       if (diagnosticsLifecycle.disposed) return;
       await indexFile(uri, extensionPath);
-      await refreshAllOpenGherkinDiagnostics(extensionPath, diagnostics, diagnosticsLifecycle);
+      scheduleDiagnosticsRefreshAfterIndexing();
     });
     watcher.onDidCreate(async uri => {
       if (diagnosticsLifecycle.disposed) return;
       await indexFile(uri, extensionPath);
-      await refreshAllOpenGherkinDiagnostics(extensionPath, diagnostics, diagnosticsLifecycle);
+      scheduleDiagnosticsRefreshAfterIndexing();
     });
     watcher.onDidDelete(uri => {
       if (diagnosticsLifecycle.disposed) return;
       clearPathFromCache(uri);
-      void refreshAllOpenGherkinDiagnostics(extensionPath, diagnostics, diagnosticsLifecycle);
+      scheduleDiagnosticsRefreshAfterIndexing();
     });
 
     context.subscriptions.push(watcher);
@@ -76,7 +99,7 @@ export async function activate(context: vscode.ExtensionContext) {
   folderWatcher.onDidDelete(uri => {
     if (diagnosticsLifecycle.disposed) return;
     clearPathFromCache(uri);
-    void refreshAllOpenGherkinDiagnostics(extensionPath, diagnostics, diagnosticsLifecycle);
+    scheduleDiagnosticsRefreshAfterIndexing();
   });
   context.subscriptions.push(folderWatcher);
 

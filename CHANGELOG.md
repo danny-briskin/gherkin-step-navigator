@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.8
+### Fixes & Improvements
+- Diagnostics and indexing performance improved: diagnostics only refresh after initial indexing completes, watcher-triggered refreshes are debounced.
+
 ## 1.0.7
 ### New Features
 - Step Diagnostics: Added inline diagnostics in `.feature` files for unresolved and ambiguous steps.  Disabled by default (check `gherkinStepNavigator.diagnostics.enabled` settings), you may need window reload after update.
