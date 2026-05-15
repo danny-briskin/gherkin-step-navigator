@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.8
+### Fixes & Improvements
+- Diagnostics Performance: Reduced extension overhead from step diagnostics by making refresh and indexing follow-up work non-blocking and more fault-tolerant.
+
 ## 1.0.7
 ### New Features
 - Step Diagnostics: Added inline diagnostics in `.feature` files for unresolved and ambiguous steps.  Disabled by default (check `gherkinStepNavigator.diagnostics.enabled` settings), you may need window reload after update.

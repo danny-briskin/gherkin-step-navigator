@@ -4,3 +4,4 @@ node_modules
 *.vsix
 out
 gherkin-navigator-icon.png
+.github/**
