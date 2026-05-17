@@ -23,6 +23,14 @@ function normalizePath(fsPath: string): string {
   return path.normalize(fsPath).toLowerCase();
 }
 
+function logNonCriticalError(context: string, error: unknown) {
+  console.error(`[gherkin-step-navigator] ${context}`, error);
+}
+
+function fireAndForget(task: Promise<void>, context: string) {
+  task.catch(error => logNonCriticalError(context, error));
+}
+
 /**
  * Extension entry point. Sets up indexing, watchers, and language providers.
  */
@@ -46,7 +54,10 @@ export async function activate(context: vscode.ExtensionContext) {
   const patterns = config.get<string[]>('stepFilePattern') || ["**/*.py", "**/*.java", "**/*Steps.cs"];
 
   // Start Background Indexing
-  indexingPromise = indexWorkspace(extensionPath, patterns);
+  indexingPromise = indexWorkspace(extensionPath, patterns)
+    .catch(error => {
+      logNonCriticalError('background indexing failed', error);
+    });
 
   // Setup File Watchers for each configured pattern
   patterns.forEach(pattern => {
@@ -54,18 +65,31 @@ export async function activate(context: vscode.ExtensionContext) {
 
     watcher.onDidChange(async uri => {
       if (diagnosticsLifecycle.disposed) return;
-      await indexFile(uri, extensionPath);
-      await refreshAllOpenGherkinDiagnostics(extensionPath, diagnostics, diagnosticsLifecycle);
+      try {
+        // P0: diagnostics are refreshed inline within indexFile() for incremental updates
+        await indexFile(uri, extensionPath, diagnostics, diagnosticsLifecycle);
+        if (diagnosticsLifecycle.disposed) return;
+      } catch (error) {
+        logNonCriticalError('watcher onDidChange failed', error);
+      }
     });
     watcher.onDidCreate(async uri => {
       if (diagnosticsLifecycle.disposed) return;
-      await indexFile(uri, extensionPath);
-      await refreshAllOpenGherkinDiagnostics(extensionPath, diagnostics, diagnosticsLifecycle);
+      try {
+        // P0: diagnostics are refreshed inline within indexFile() for incremental updates
+        await indexFile(uri, extensionPath, diagnostics, diagnosticsLifecycle);
+        if (diagnosticsLifecycle.disposed) return;
+      } catch (error) {
+        logNonCriticalError('watcher onDidCreate failed', error);
+      }
     });
     watcher.onDidDelete(uri => {
       if (diagnosticsLifecycle.disposed) return;
       clearPathFromCache(uri);
-      void refreshAllOpenGherkinDiagnostics(extensionPath, diagnostics, diagnosticsLifecycle);
+      fireAndForget(
+        refreshAllOpenGherkinDiagnostics(extensionPath, diagnostics, diagnosticsLifecycle),
+        'watcher onDidDelete refresh failed'
+      );
     });
 
     context.subscriptions.push(watcher);
@@ -76,7 +100,10 @@ export async function activate(context: vscode.ExtensionContext) {
   folderWatcher.onDidDelete(uri => {
     if (diagnosticsLifecycle.disposed) return;
     clearPathFromCache(uri);
-    void refreshAllOpenGherkinDiagnostics(extensionPath, diagnostics, diagnosticsLifecycle);
+    fireAndForget(
+      refreshAllOpenGherkinDiagnostics(extensionPath, diagnostics, diagnosticsLifecycle),
+      'folder watcher onDidDelete refresh failed'
+    );
   });
   context.subscriptions.push(folderWatcher);
 
@@ -129,24 +156,34 @@ export async function activate(context: vscode.ExtensionContext) {
     // Go to Definition (F12) Provider
     vscode.languages.registerDefinitionProvider('gherkin', {
       async provideDefinition(document, position) {
-        // Ensure initial indexing is complete before searching
-        if (indexingPromise) await indexingPromise;
+        try {
+          const lineText = document.lineAt(position.line).text;
 
-        const lineText = document.lineAt(position.line).text;
-        const results: vscode.Location[] = [];
+          // Fast path: use whatever is currently indexed to keep F12 responsive.
+          let results = getMatchingLocations(lineText, extensionPath);
 
-        // Scan the cache for patterns that match the current Gherkin step text
-        for (const [pattern, locations] of stepCache.entries()) {
-          if (StepMatcher.isMatch(lineText, pattern, extensionPath)) {
-            results.push(...locations);
+          // If still indexing and no hit yet, give indexing a short chance to catch up.
+          if (results.length === 0 && indexingPromise) {
+            await Promise.race([
+              indexingPromise,
+              new Promise(resolve => setTimeout(resolve, 1500))
+            ]);
+            results = getMatchingLocations(lineText, extensionPath);
           }
+
+          return results.length > 0 ? results : null;
+        } catch (error) {
+          logNonCriticalError('definition provider failed', error);
+          return null;
         }
-        return results.length > 0 ? results : null;
       }
     })
   );
 
-  await refreshAllOpenGherkinDiagnostics(extensionPath, diagnostics, diagnosticsLifecycle);
+  fireAndForget(
+    refreshAllOpenGherkinDiagnostics(extensionPath, diagnostics, diagnosticsLifecycle),
+    'initial diagnostics refresh failed'
+  );
 }
 
 function queueDiagnosticsRefresh(
@@ -172,7 +209,11 @@ function queueDiagnosticsRefresh(
     setTimeout(async () => {
       if (diagnosticsLifecycle.disposed) return;
       diagnosticsRefreshTimer.delete(key);
-      await refreshDiagnostics(document, extensionPath, diagnostics, diagnosticsLifecycle);
+      try {
+        await refreshDiagnostics(document, extensionPath, diagnostics, diagnosticsLifecycle);
+      } catch (error) {
+        logNonCriticalError('queued diagnostics refresh failed', error);
+      }
     }, 200)
   );
 }
@@ -193,6 +234,7 @@ async function refreshAllOpenGherkinDiagnostics(
     if (diagnosticsLifecycle.disposed) return;
     if (document.languageId === 'gherkin') {
       await refreshDiagnostics(document, extensionPath, diagnostics, diagnosticsLifecycle);
+      if (diagnosticsLifecycle.disposed) return;
     }
   }
 }
@@ -211,6 +253,8 @@ async function refreshDiagnostics(
   const docDiagnostics: vscode.Diagnostic[] = [];
 
   for (let line = 0; line < document.lineCount; line++) {
+    if (diagnosticsLifecycle.disposed) return;
+
     const lineText = document.lineAt(line).text;
     if (!StepMatcher.isStepLine(lineText, extensionPath)) continue;
 
@@ -240,34 +284,77 @@ async function refreshDiagnostics(
     }
   }
 
-  diagnostics.set(document.uri, docDiagnostics);
+  if (diagnosticsLifecycle.disposed) return;
+  try {
+    diagnostics.set(document.uri, docDiagnostics);
+  } catch (e) {
+    // VS Code may dispose the collection while async work is in flight.
+    // Ignore late writes during shutdown/deactivation.
+  }
 }
 
 /**
  * Scans the entire workspace using glob patterns to build the step definition index.
  */
 async function indexWorkspace(extensionPath: string, patterns: string[]) {
-  for (const pattern of patterns) {
-    const files = await vscode.workspace.findFiles(pattern, '**/node_modules/**');
-    for (const file of files) {
-      await indexFile(file, extensionPath);
+  try {
+    const filesByPattern = await Promise.all(
+      patterns.map(pattern => vscode.workspace.findFiles(pattern, '**/node_modules/**'))
+    );
+
+    // Deduplicate files that may match multiple glob patterns.
+    const uniqueFiles = new Map<string, vscode.Uri>();
+    for (const files of filesByPattern) {
+      for (const file of files) {
+        uniqueFiles.set(normalizePath(file.fsPath), file);
+      }
     }
+
+    // Use bounded concurrency to avoid long sequential scans while keeping I/O sane.
+    const concurrency = Math.min(8, Math.max(1, uniqueFiles.size));
+    const uris = Array.from(uniqueFiles.values());
+    let cursor = 0;
+
+    const workers = Array.from({ length: concurrency }, async () => {
+      while (true) {
+        const idx = cursor;
+        cursor += 1;
+        if (idx >= uris.length) break;
+        await indexFile(uris[idx], extensionPath);
+      }
+    });
+
+    await Promise.all(workers);
+  } finally {
+    // Ensure callers never await a stale/pending promise forever on failures.
+    indexingPromise = null;
   }
-  indexingPromise = null;
 }
 
 /**
  * Parses a single source file to extract step definition patterns (e.g., @Given("...")).
  * Automatically updates the global stepCache.
+ *
+ * When diagnostics/lifecycle are provided and we are NOT in the initial workspace scan
+ * (indexingPromise === null), diagnostics for all open Gherkin documents are refreshed
+ * inline here — avoiding a redundant second loop in the caller.
  */
-async function indexFile(uri: vscode.Uri, extensionPath: string) {
+async function indexFile(
+  uri: vscode.Uri,
+  extensionPath: string,
+  diagnostics?: vscode.DiagnosticCollection,
+  diagnosticsLifecycle?: DiagnosticsLifecycleState
+) {
   if (!uri || !uri.fsPath) return;
+  if (diagnosticsLifecycle?.disposed) return;
 
   // Prevent duplicate entries if a file is modified
   clearPathFromCache(uri);
 
   try {
     const content = await vscode.workspace.fs.readFile(uri);
+    if (diagnosticsLifecycle?.disposed) return;
+
     const text = Buffer.from(content).toString('utf8');
 
     // Regex dynamically generated from the Gherkin grammar
@@ -294,6 +381,21 @@ async function indexFile(uri: vscode.Uri, extensionPath: string) {
       }
     }
   } catch (e) { }
+
+  // P0: For incremental updates (file watcher events), refresh diagnostics for open
+  // Gherkin documents here — in the same call — instead of requiring the caller to
+  // schedule a separate refreshAllOpenGherkinDiagnostics() loop.
+  // Skip during the initial workspace scan (indexingPromise !== null) to avoid
+  // re-running diagnostics after every individual file during bulk indexing.
+  if (diagnostics && diagnosticsLifecycle && diagnosticsEnabled && !indexingPromise) {
+    for (const document of vscode.workspace.textDocuments) {
+      if (diagnosticsLifecycle.disposed) return;
+      if (document.languageId === 'gherkin') {
+        await refreshDiagnostics(document, extensionPath, diagnostics, diagnosticsLifecycle);
+        if (diagnosticsLifecycle.disposed) return;
+      }
+    }
+  }
 }
 
 /**
@@ -325,4 +427,18 @@ function clearPathFromCache(uri: vscode.Uri) {
 
 export function deactivate() {
   stepCache.clear();
+  indexingPromise = null;
+}
+
+function getMatchingLocations(lineText: string, extensionPath: string): vscode.Location[] {
+  const results: vscode.Location[] = [];
+
+  // Scan the cache for patterns that match the current Gherkin step text
+  for (const [pattern, locations] of stepCache.entries()) {
+    if (StepMatcher.isMatch(lineText, pattern, extensionPath)) {
+      results.push(...locations);
+    }
+  }
+
+  return results;
 }
