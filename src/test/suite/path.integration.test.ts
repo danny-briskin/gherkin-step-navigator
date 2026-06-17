@@ -1,8 +1,12 @@
 import * as assert from 'assert';
-import * as vscode from 'vscode';
 import * as path from 'path';
+import * as vscode from 'vscode';
+import { applyFixtureTestConfiguration } from './testConfig';
 
 suite('Path & Configuration Integration Tests', () => {
+    suiteSetup(async () => {
+        await applyFixtureTestConfiguration();
+    });
 
     test('Configuration: Should resolve stepFilePattern to existing files', async () => {
         // 1. Get the patterns from actual workspace configuration

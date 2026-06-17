@@ -38,6 +38,8 @@ export async function activate(context: vscode.ExtensionContext) {
   const extensionPath = context.extensionPath;
   const config = vscode.workspace.getConfiguration('gherkinStepNavigator');
   diagnosticsEnabled = config.get<boolean>('diagnostics.enabled', true);
+  // Case sensitivity setting for step matching (default: false -> case-insensitive)
+  const caseSensitiveMatching = config.get<boolean>('caseSensitiveMatching', false);
   const diagnostics = vscode.languages.createDiagnosticCollection('gherkinStepNavigator');
   context.subscriptions.push(diagnostics);
   const diagnosticsRefreshTimer = new Map<string, ReturnType<typeof setTimeout>>();
@@ -130,6 +132,28 @@ export async function activate(context: vscode.ExtensionContext) {
       clearTimeout(existing);
       diagnosticsRefreshTimer.delete(key);
     }
+  }));
+
+  context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(event => {
+    if (diagnosticsLifecycle.disposed) return;
+
+    const diagnosticsChanged = event.affectsConfiguration('gherkinStepNavigator.diagnostics.enabled');
+    const caseMatchingChanged = event.affectsConfiguration('gherkinStepNavigator.caseSensitiveMatching');
+
+    if (!diagnosticsChanged && !caseMatchingChanged) return;
+
+    const cfg = vscode.workspace.getConfiguration('gherkinStepNavigator');
+    diagnosticsEnabled = cfg.get<boolean>('diagnostics.enabled', true);
+
+    if (!diagnosticsEnabled) {
+      diagnostics.clear();
+      return;
+    }
+
+    fireAndForget(
+      refreshAllOpenGherkinDiagnostics(extensionPath, diagnostics, diagnosticsLifecycle),
+      'configuration change diagnostics refresh failed'
+    );
   }));
 
   // Register Language Features
@@ -258,9 +282,10 @@ async function refreshDiagnostics(
     const lineText = document.lineAt(line).text;
     if (!StepMatcher.isStepLine(lineText, extensionPath)) continue;
 
+    const caseSensitive = vscode.workspace.getConfiguration('gherkinStepNavigator').get<boolean>('caseSensitiveMatching', false);
     let matchCount = 0;
     for (const [pattern, locations] of stepCache.entries()) {
-      if (StepMatcher.isMatch(lineText, pattern, extensionPath)) {
+      if (StepMatcher.isMatch(lineText, pattern, extensionPath, caseSensitive)) {
         matchCount += locations.length;
       }
     }
@@ -435,7 +460,8 @@ function getMatchingLocations(lineText: string, extensionPath: string): vscode.L
 
   // Scan the cache for patterns that match the current Gherkin step text
   for (const [pattern, locations] of stepCache.entries()) {
-    if (StepMatcher.isMatch(lineText, pattern, extensionPath)) {
+    const caseSensitive = vscode.workspace.getConfiguration('gherkinStepNavigator').get<boolean>('caseSensitiveMatching', false);
+    if (StepMatcher.isMatch(lineText, pattern, extensionPath, caseSensitive)) {
       results.push(...locations);
     }
   }

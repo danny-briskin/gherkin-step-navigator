@@ -3,7 +3,7 @@
   "displayName": "Gherkin Step Navigator",
   "description": "Navigate from Gherkin feature steps to code.",
   "icon": "icon.png",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "publisher": "DannyBriskin",
   "author": {
     "name": "Danny Briskin"
@@ -79,6 +79,11 @@
           "type": "boolean",
           "default": false,
           "description": "Show diagnostics in .feature files for unresolved and ambiguous step definitions."
+        },
+        "gherkinStepNavigator.caseSensitiveMatching": {
+          "type": "boolean",
+          "default": false,
+          "description": "When enabled, step-to-definition matching requires exact case (default: disabled)."
         },
         "gherkinStepNavigator.indent.scenario": {
           "type": "integer",
