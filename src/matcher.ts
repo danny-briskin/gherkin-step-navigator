@@ -66,7 +66,7 @@ export class StepMatcher {
      * Determines if a line of Gherkin text matches a specific step definition pattern.
      * Supports Cucumber Expressions by converting placeholders into regex groups.
      */
-    public static isMatch(stepText: string, pattern: string, extensionPath: string): boolean {
+    public static isMatch(stepText: string, pattern: string, extensionPath: string, caseSensitive: boolean = false): boolean {
         const keywordRegex = this.getStepKeywordRegex(extensionPath);
         if (!keywordRegex.test(stepText.trimStart())) return false;
 
@@ -77,7 +77,11 @@ export class StepMatcher {
         let convertedPattern = pattern.replace(/""/g, '"');
 
         // 1. Literal Match Check
-        if (cleanStep.toLowerCase() === convertedPattern.toLowerCase()) return true;
+        if (caseSensitive) {
+            if (cleanStep === convertedPattern) return true;
+        } else {
+            if (cleanStep.toLowerCase() === convertedPattern.toLowerCase()) return true;
+        }
 
         // 2. Identify if it's a regex or a cucumber expression
         const isRegex = convertedPattern.includes('(') ||
@@ -107,7 +111,9 @@ export class StepMatcher {
 
         try {
             const suffix = convertedPattern.endsWith(' ') ? '.*' : '';
-            const finalRegex = new RegExp(`^${convertedPattern}${suffix}$`, 'i');
+            // Use case-insensitive regex by default, allow case-sensitive when requested
+            const flags = caseSensitive ? '' : 'i';
+            const finalRegex = new RegExp(`^${convertedPattern}${suffix}$`, flags);
             return finalRegex.test(cleanStep);
         } catch (e) { return false; }
     }

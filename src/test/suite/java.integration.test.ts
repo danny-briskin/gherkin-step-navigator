@@ -1,8 +1,10 @@
 import * as assert from 'assert';
-import * as vscode from 'vscode';
 import * as path from 'path';
+import * as vscode from 'vscode';
+import { applyFixtureTestConfiguration } from './testConfig';
 
 test('Java Integration: Should find @Given in .java files', async () => {
+    await applyFixtureTestConfiguration();
     const extension = vscode.extensions.getExtension('DannyBriskin.gherkin-step-navigator');
     const fixturePath = path.join(extension!.extensionPath, 'out', 'test', 'fixtures');
     const uri = vscode.Uri.file(path.join(fixturePath, 'java_test.feature'));

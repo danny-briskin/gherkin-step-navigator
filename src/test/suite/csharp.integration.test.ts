@@ -2,8 +2,13 @@ import * as assert from 'assert';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { StepMatcher } from '../../matcher';
+import { applyFixtureTestConfiguration } from './testConfig';
 
 suite('Extension Integration Tests', () => {
+    suiteSetup(async () => {
+        await applyFixtureTestConfiguration();
+    });
+
     test('F12 Go to Definition should find C# step', async function () {
         // Add this inside your test to see what the indexer sees
         const files = await vscode.workspace.findFiles('**/*.cs');

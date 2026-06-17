@@ -1,6 +1,7 @@
 import * as assert from 'assert';
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { applyFixtureTestConfiguration } from './testConfig';
 
 function getDiagnosticsForUri(uri: vscode.Uri): vscode.Diagnostic[] {
     return vscode.languages.getDiagnostics()
@@ -23,6 +24,10 @@ async function waitForDiagnostics(uri: vscode.Uri, predicate: (diagnostics: vsco
 }
 
 suite('Step Diagnostics Test Suite', () => {
+    suiteSetup(async () => {
+        await applyFixtureTestConfiguration();
+    });
+
     test('Should warn for unresolved steps', async () => {
         const extension = vscode.extensions.getExtension('DannyBriskin.gherkin-step-navigator');
         await extension?.activate();

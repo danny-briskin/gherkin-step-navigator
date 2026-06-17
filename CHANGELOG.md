@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.9
+### New Features & Improvements
+- Case-sensitivity toggle: Added a new configuration `gherkinStepNavigator.caseSensitiveMatching` (default: `disabled`) to allow projects to opt in to case-sensitive step-to-definition matching. When enabled, literal and regex matching require exact case; keyword detection remains case-insensitive.
+
 ## 1.0.8
 ### Fixes & Improvements
 - Diagnostics Performance: Reduced extension overhead from step diagnostics by making refresh and indexing follow-up work non-blocking and more fault-tolerant.
