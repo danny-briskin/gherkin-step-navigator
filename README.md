@@ -1,6 +1,6 @@
 # <img src="./icon.png" width="50" height="50"> Gherkin Step Navigator
 
-🚀 **Instantly jump from Gherkin feature steps to their code implementations across C#, Java, Python, and more.**
+🚀 **Instantly jump from Gherkin feature steps to their code implementations across C#, Java, Python, JavaScript, TypeScript, and more.**
 
 Gherkin Step Navigator is a lightweight, high-performance VS Code extension that brings "Go to Definition" support to BDD (Behavior Driven Development) frameworks. By reading directly from the Gherkin grammar, it supports international keywords (like *Angenommen*, *Étant donné*, *Dado*) out of the box while providing rich, theme-integrated syntax coloring for all Gherkin elements.
 
@@ -18,6 +18,7 @@ Gherkin Step Navigator is a lightweight, high-performance VS Code extension that
   - **C# / SpecFlow / Reqnroll:** `[Given(@"regex")]`
   - **Java / Cucumber:** `@Given("regex")` or `@Given("Cucumber Expression")`
   - **Python / Behave:** `@given('regex')` or `@when(u'unicode')`
+  - **JavaScript / TypeScript / cucumber-js:** `Given('expression')`, `When(/^regex$/)`, or `defineStep('expression')`
 - **Advanced Parameter Matching:** Supports Cucumber Expressions like `{int}`, `{string}`, `{word}`, and `{float}`, as well as SpecFlow-style `{count:d}`.
 - **Step Diagnostics:** Highlights unresolved steps and ambiguous matches directly inside `.feature` files. Disabled by default (check `gherkinStepNavigator.diagnostics.enabled` settings).
 ---

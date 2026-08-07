@@ -11,7 +11,7 @@ suite('Path & Configuration Integration Tests', () => {
     test('Configuration: Should resolve stepFilePattern to existing files', async () => {
         // 1. Get the patterns from actual workspace configuration
         const config = vscode.workspace.getConfiguration('gherkinStepNavigator');
-        const patterns = config.get<string[]>('stepFilePattern') || ["**/*.py", "**/*.java", "**/*Steps.cs"];
+        const patterns = config.get<string[]>('stepFilePattern') || ["**/*.py", "**/*.java", "**/*Steps.cs", "**/*.js", "**/*.ts"];
 
         // 2. Verify that at least one pattern finds our test fixtures
         let foundFiles: vscode.Uri[] = [];
@@ -26,7 +26,7 @@ suite('Path & Configuration Integration Tests', () => {
 
         // Check for at least one known fixture from your existing test set
         const hasFixture = fileNames.some(name =>
-            name.endsWith('.py') || name.endsWith('.java') || name.endsWith('.cs')
+            name.endsWith('.py') || name.endsWith('.java') || name.endsWith('.cs') || name.endsWith('.js') || name.endsWith('.ts')
         );
         assert.strictEqual(hasFixture, true, `Patterns matched files, but none were valid step source files. Found: ${fileNames.join(', ')}`);
     });

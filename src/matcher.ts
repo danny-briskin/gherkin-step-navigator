@@ -160,11 +160,21 @@ export class StepMatcher {
 
     /**
      * Returns a global regex to find step definitions in source files.
-     * Matches patterns like @Given("pattern"), @When('pattern'), or [Given("pattern")].
+     * Matches patterns like @Given("pattern"), Given("pattern"), defineStep('pattern'),
+     * [Given("pattern")], and regex literals like Given(/^pattern$/).
      */
     public static getSourceRegex(extensionPath: string): RegExp {
         const keywords = this.getKeywords(extensionPath);
-        // Updated to allow spaces/parens before the quote for C# compatibility
-        return new RegExp(`(?:@|\\s*\\[)(?:${keywords}|StepDefinition)\\s*\\(?\\s*[@$]?(['"])(.*?)\\1`, 'gi');
+        // Supports decorator-based (Java/Python/C#) and function-call-based (cucumber-js) definitions.
+        // Captures either quoted text (groups 1-3) or regex literals (group 4).
+        return new RegExp(
+            `(?:@|\\s*\\[)?(?:${keywords}|StepDefinition|defineStep)\\s*(?=\\()\\(\\s*(?:` +
+            `[@$]?"((?:\\\\.|[^"\\\\])*)"|` +
+            `[@$]?'((?:\\\\.|[^'\\\\])*)'|` +
+            `[@$]?\`((?:\\\\.|[^\`\\\\])*)\`|` +
+            `\\/((?:\\\\\\/|[^\\/\\r\\n])+)\\/[dgimsuy]*` +
+            `)`,
+            'gi'
+        );
     }
 }

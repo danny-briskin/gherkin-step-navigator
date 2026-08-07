@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.1.0
+### New Features
+- JavaScript/TypeScript step definition support: Added indexing and navigation support for cucumber-js style definitions in `.js` and `.ts` files, including `Given(...)`, `When(...)`, `Then(...)`, and `defineStep(...)` signatures.
+- Regex literal support for cucumber-js: Added extraction support for regex-literal definitions such as `When(/^...$/)`.
+
+### Fixes & Improvements
+- Dynamic re-indexing on configuration updates: Changed extension behavior to rebuild the step cache when `gherkinStepNavigator.stepFilePattern` is updated at runtime, ensuring new file patterns are picked up without stale indexing.
+- Default step file patterns now include `**/*.js` and `**/*.ts` for mixed-language repositories.
+
 ## 1.0.9
 ### New Features & Improvements
 - Case-sensitivity toggle: Added a new configuration `gherkinStepNavigator.caseSensitiveMatching` (default: `disabled`) to allow projects to opt in to case-sensitive step-to-definition matching. When enabled, literal and regex matching require exact case; keyword detection remains case-insensitive.

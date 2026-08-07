@@ -1,0 +1,23 @@
+import * as assert from 'assert';
+import * as path from 'path';
+import * as vscode from 'vscode';
+import { applyFixtureTestConfiguration } from './testConfig';
+
+test('TypeScript Integration: Should find defineStep() in .ts files', async () => {
+    await applyFixtureTestConfiguration();
+    const extension = vscode.extensions.getExtension('DannyBriskin.gherkin-step-navigator');
+    const fixturePath = path.join(extension!.extensionPath, 'out', 'test', 'fixtures');
+    const uri = vscode.Uri.file(path.join(fixturePath, 'typescript_test.feature'));
+
+    const doc = await vscode.workspace.openTextDocument(uri);
+    await vscode.window.showTextDocument(doc);
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    const pos = new vscode.Position(2, 10);
+    const locs = await vscode.commands.executeCommand<vscode.Location[]>(
+        'vscode.executeDefinitionProvider', uri, pos
+    );
+
+    assert.ok(locs && locs.length > 0, 'TypeScript step definition not found');
+    assert.ok(locs[0].uri.fsPath.endsWith('.ts'));
+});

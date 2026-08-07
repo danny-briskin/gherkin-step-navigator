@@ -52,8 +52,8 @@ export async function activate(context: vscode.ExtensionContext) {
     diagnosticsRefreshTimer.clear();
   }));
 
-  // Load user patterns or fall back to defaults for Python, Java, and C#
-  const patterns = config.get<string[]>('stepFilePattern') || ["**/*.py", "**/*.java", "**/*Steps.cs"];
+  // Load user patterns or fall back to defaults for Python, Java, C#, JavaScript, and TypeScript
+  const patterns = config.get<string[]>('stepFilePattern') || ["**/*.py", "**/*.java", "**/*Steps.cs", "**/*.js", "**/*.ts"];
 
   // Start Background Indexing
   indexingPromise = indexWorkspace(extensionPath, patterns)
@@ -139,11 +139,29 @@ export async function activate(context: vscode.ExtensionContext) {
 
     const diagnosticsChanged = event.affectsConfiguration('gherkinStepNavigator.diagnostics.enabled');
     const caseMatchingChanged = event.affectsConfiguration('gherkinStepNavigator.caseSensitiveMatching');
+    const stepPatternChanged = event.affectsConfiguration('gherkinStepNavigator.stepFilePattern');
 
-    if (!diagnosticsChanged && !caseMatchingChanged) return;
+    if (!diagnosticsChanged && !caseMatchingChanged && !stepPatternChanged) return;
 
     const cfg = vscode.workspace.getConfiguration('gherkinStepNavigator');
     diagnosticsEnabled = cfg.get<boolean>('diagnostics.enabled', true);
+
+    if (stepPatternChanged) {
+      const updatedPatterns = cfg.get<string[]>('stepFilePattern') || ["**/*.py", "**/*.java", "**/*Steps.cs", "**/*.js", "**/*.ts"];
+      stepCache.clear();
+      indexingPromise = indexWorkspace(extensionPath, updatedPatterns)
+        .catch(error => {
+          logNonCriticalError('re-indexing after stepFilePattern change failed', error);
+        });
+      fireAndForget(
+        (async () => {
+          if (indexingPromise) await indexingPromise;
+          if (diagnosticsLifecycle.disposed) return;
+          await refreshAllOpenGherkinDiagnostics(extensionPath, diagnostics, diagnosticsLifecycle);
+        })(),
+        'stepFilePattern change diagnostics refresh failed'
+      );
+    }
 
     if (!diagnosticsEnabled) {
       diagnostics.clear();
@@ -387,8 +405,8 @@ async function indexFile(
 
     let match;
     while ((match = stepDefRegex.exec(text)) !== null) {
-      // match[2] is the pattern inside the quotes
-      const pattern = match[2] || match[1];
+      // Extract quoted pattern or regex literal from the matcher capture groups.
+      const pattern = match[1] || match[2] || match[3] || match[4];
 
       if (pattern) {
         // match.index points to the start of the whole match (e.g., the '[' or '@')
