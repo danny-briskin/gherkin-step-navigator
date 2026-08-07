@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 
-const TEST_STEP_PATTERNS = ['**/*Steps.cs', '**/*.java', '**/*.py'];
+const TEST_STEP_PATTERNS = ['**/*Steps.cs', '**/*.java', '**/*.py', '**/*.js', '**/*.ts'];
 
 export async function applyFixtureTestConfiguration(): Promise<void> {
     const config = vscode.workspace.getConfiguration('gherkinStepNavigator');
