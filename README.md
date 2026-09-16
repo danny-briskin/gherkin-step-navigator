@@ -12,7 +12,7 @@ Gherkin Step Navigator is a lightweight, high-performance VS Code extension that
 - **Intelligence Formatting:** 
   - **Auto-Indentation:** Feature, Scenario, Steps, and more. Indents are fully configurable in settings.
   - **Dynamic Table Alignment:** Vertically aligns pipes `|` based on column content width.
-  - **DocStrings:** Properly indents triple quotes `"""` to 6 spaces.
+  - **DocStrings:** Detects `"""` and ` ``` ` blocks (including content-type annotations like `"""markdown`/` ```json `), indents the delimiters, and re-indents content lines while preserving their relative nesting.
 - **Smart Multi-Language Support:** Automatically parses your installed Gherkin grammar (`tmLanguage`). If VS Code highlights it, this extension can navigate it.
 - **Robust Step Detection:** Automatically indexes and matches definitions across multiple languages. For example:
   - **C# / SpecFlow / Reqnroll:** `[Given(@"regex")]`

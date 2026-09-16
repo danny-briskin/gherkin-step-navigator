@@ -361,4 +361,165 @@ Given a step
         assert.strictEqual(lines[2].length - lines[2].trimStart().length, 2, 'Table comment should use TABLE_COMMENT indent');
         assert.strictEqual(lines[3].length - lines[3].trimStart().length, 10, 'Following table row should still use TABLE indent');
     });
+
+    test('DocString: Should indent delimiters and content consistently', () => {
+        const input =
+            `Scenario: Docstring
+Given a payload
+"""
+  {
+    "a": 1
+  }
+"""
+Then done`;
+
+        // All non-blank content lines share the same fixed DOCSTRING indent as the fence itself,
+        // giving the whole block one consistent left margin regardless of original spacing.
+        const expected =
+            `  Scenario: Docstring
+    Given a payload
+      """
+      {
+      "a": 1
+      }
+      """
+    Then done`;
+
+        const edits = GherkinFormatter.format(mockDocument(input), keywords);
+        const result = applyEdits(input, edits);
+
+        assert.strictEqual(result, expected, "DocString indentation was not applied correctly");
+    });
+
+    test('DocString: Should not treat content lines as comments, tags, or tables', () => {
+        const input =
+            `    Given a payload
+    """
+    # not a comment
+    @not-a-tag
+    | not | a | table |
+    """
+    Then done`;
+
+        const expected =
+            `    Given a payload
+      """
+      # not a comment
+      @not-a-tag
+      | not | a | table |
+      """
+    Then done`;
+
+        const edits = GherkinFormatter.format(mockDocument(input), keywords);
+        const result = applyEdits(input, edits);
+
+        assert.strictEqual(result, expected, "DocString content should be preserved verbatim aside from indentation shift");
+    });
+
+    test('DocString: Should support backtick-fenced (```) docstrings with content type', () => {
+        const input =
+            `Given a payload
+\`\`\`json
+{
+"a": 1
+}
+\`\`\``;
+
+        const expected =
+            `    Given a payload
+      \`\`\`json
+      {
+      "a": 1
+      }
+      \`\`\``;
+
+        const edits = GherkinFormatter.format(mockDocument(input), keywords);
+        const result = applyEdits(input, edits);
+
+        assert.strictEqual(result, expected, "Backtick DocString formatting failed");
+    });
+
+    test('DocString: Should support triple-quote content-type annotation (e.g. """markdown)', () => {
+        const input =
+            `Given a payload
+"""markdown
+Some Title, Eh?
+===============
+"""`;
+
+        const expected =
+            `    Given a payload
+      """markdown
+      Some Title, Eh?
+      ===============
+      """`;
+
+        const edits = GherkinFormatter.format(mockDocument(input), keywords);
+        const result = applyEdits(input, edits);
+
+        assert.strictEqual(result, expected, "Triple-quote content-type annotated DocString formatting failed");
+    });
+
+    test('DocString: Should handle an empty DocString block', () => {
+        const input =
+            `Given a payload
+"""
+"""
+Then done`;
+
+        const expected =
+            `    Given a payload
+      """
+      """
+    Then done`;
+
+        const edits = GherkinFormatter.format(mockDocument(input), keywords);
+        const result = applyEdits(input, edits);
+
+        assert.strictEqual(result, expected, "Empty DocString block formatting failed");
+    });
+
+    test('DocString: Should preserve blank lines within content as part of the block', () => {
+        const input =
+            `Given a payload
+"""
+line one
+
+line two
+"""
+Then done`;
+
+        const edits = GherkinFormatter.format(mockDocument(input), keywords);
+        const result = applyEdits(input, edits);
+        const lines = result.split('\n');
+
+        // The blank line inside the DocString is content, not a document-level empty line,
+        // so it must not be force-collapsed to zero length by the empty-line handling.
+        assert.strictEqual(lines[3], '', "Blank content line should remain blank");
+        assert.strictEqual(lines[2], '      line one');
+        assert.strictEqual(lines[4], '      line two');
+    });
+
+    test('DocString: Content should always share one consistent indent, regardless of original spacing', () => {
+        const input =
+            `        Given a payload
+        """
+    less indented content
+no indentation at all
+        """`;
+
+        // Every non-blank content line gets the same fixed DOCSTRING indent (6), not a shift
+        // relative to the original (ragged) spacing, so the block always looks uniformly formatted.
+        const expected =
+            `    Given a payload
+      """
+      less indented content
+      no indentation at all
+      """`;
+
+        const edits = GherkinFormatter.format(mockDocument(input), keywords);
+        const result = applyEdits(input, edits);
+
+        assert.strictEqual(result, expected, "DocString content lines should all share the same indent");
+    });
 });

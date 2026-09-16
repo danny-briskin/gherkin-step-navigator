@@ -20,4 +20,5 @@ test('Java Integration: Should find @Given in .java files', async () => {
 
     assert.ok(locs && locs.length > 0, "Java step definition not found");
     assert.ok(locs[0].uri.fsPath.endsWith('.java'));
+    await vscode.commands.executeCommand('workbench.action.closeAllEditors');
 });

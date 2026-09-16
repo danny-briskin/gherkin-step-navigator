@@ -20,4 +20,5 @@ test('Python Integration: Should find @given in .py files', async () => {
 
     assert.ok(locs && locs.length > 0, "Python step definition not found");
     assert.ok(locs[0].uri.fsPath.endsWith('.py'));
+    await vscode.commands.executeCommand('workbench.action.closeAllEditors');
 });

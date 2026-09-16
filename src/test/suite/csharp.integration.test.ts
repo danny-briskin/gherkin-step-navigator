@@ -2,11 +2,15 @@ import * as assert from 'assert';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { StepMatcher } from '../../matcher';
-import { applyFixtureTestConfiguration } from './testConfig';
+import { applyFixtureTestConfiguration, closeAllEditors } from './testConfig';
 
 suite('Extension Integration Tests', () => {
     suiteSetup(async () => {
         await applyFixtureTestConfiguration();
+    });
+
+    suiteTeardown(async () => {
+        await closeAllEditors();
     });
 
     test('F12 Go to Definition should find C# step', async function () {

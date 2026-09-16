@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.1.1
+### New Features
+- DocString-aware formatting: The formatter now detects DocString blocks (`"""` and  ` ``` `, including content-type annotations like `"""markdown` or ` ```json `) and indents their opening/closing delimiters using `gherkinStepNavigator.indent.docstring`, while re-indenting content lines by the same shift so relative/nested indentation inside the block is preserved.
+
+### Fixes & Improvements
+- DocString content lines (which may start with `#`, `@`, or `|`) are no longer misclassified as comments, tags, or tables by the formatter.
+- Blank lines inside a DocString are kept as true empty lines instead of being padded with indentation-only whitespace.
+- Syntax Highlighting: Backtick-fenced DocStrings (` ``` `, including content-type annotations like ` ```json `) are now colorized like `"""` DocStrings.
+- Step Diagnostics: DocString content is now skipped when scanning for unresolved/ambiguous steps.
+
+
 ## 1.1.0
 ### New Features
 - JavaScript/TypeScript step definition support: Added indexing and navigation support for cucumber-js style definitions in `.js` and `.ts` files, including `Given(...)`, `When(...)`, `Then(...)`, and `defineStep(...)` signatures.

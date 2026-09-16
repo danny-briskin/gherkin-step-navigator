@@ -293,11 +293,42 @@ async function refreshDiagnostics(
   if (diagnosticsLifecycle.disposed) return;
 
   const docDiagnostics: vscode.Diagnostic[] = [];
+  let docstringDelimiter: string | null = null;
+
+  // Free-form description text (under Feature, or under Scenario/Background/Example/Rule
+  // before the first real step) can start with anything, including a lone "*" bullet or a
+  // word that happens to match an internationalized step keyword synonym. Per the Gherkin
+  // spec, only text inside a Scenario/Background/Example/Rule body is actually a step, so we
+  // only run step checks once we've seen one of those element headers.
+  const formattingKeywords = StepMatcher.getFormattingKeywords(extensionPath);
+  let insideElement = !formattingKeywords;
 
   for (let line = 0; line < document.lineCount; line++) {
     if (diagnosticsLifecycle.disposed) return;
 
     const lineText = document.lineAt(line).text;
+    const trimmed = lineText.trim();
+
+    // Skip DocString ("""/```) blocks entirely: their content is free text, not steps,
+    // and can otherwise trigger false "no matching step definition" warnings.
+    if (docstringDelimiter !== null) {
+      if (trimmed === docstringDelimiter) docstringDelimiter = null;
+      continue;
+    }
+    if (trimmed === '"""' || /^"""\S+$/.test(trimmed) || trimmed === '```' || /^```\S+$/.test(trimmed)) {
+      docstringDelimiter = trimmed.startsWith('```') ? '```' : '"""';
+      continue;
+    }
+
+    if (formattingKeywords) {
+      if (formattingKeywords.elements.test(trimmed)) {
+        insideElement = true;
+      } else if (formattingKeywords.features.test(trimmed)) {
+        insideElement = false;
+      }
+    }
+    if (!insideElement) continue;
+
     if (!StepMatcher.isStepLine(lineText, extensionPath)) continue;
 
     const caseSensitive = vscode.workspace.getConfiguration('gherkinStepNavigator').get<boolean>('caseSensitiveMatching', false);
