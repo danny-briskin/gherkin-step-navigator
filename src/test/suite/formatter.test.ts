@@ -460,6 +460,44 @@ Some Title, Eh?
         assert.strictEqual(result, expected, "Triple-quote content-type annotated DocString formatting failed");
     });
 
+    test('DocString: Should split inline opening content onto a consistently indented line', () => {
+        const input =
+            `Feature: Workflow
+"""    As
+an automation user
+"""`;
+
+        const expected =
+            `Feature: Workflow
+      """
+      As
+      an automation user
+      """`;
+
+        const edits = GherkinFormatter.format(mockDocument(input), keywords);
+        const result = applyEdits(input, edits);
+
+        assert.strictEqual(result, expected, "Inline DocString content should be split and indented consistently");
+    });
+
+    test('DocString: Should split a trailing inline closing fence onto its own line', () => {
+        const input =
+            `Given a payload
+"""
+So that I can confirm lifecycle, image management, and server behaviors """`;
+
+        const expected =
+            `    Given a payload
+      """
+      So that I can confirm lifecycle, image management, and server behaviors
+      """`;
+
+        const edits = GherkinFormatter.format(mockDocument(input), keywords);
+        const result = applyEdits(input, edits);
+
+        assert.strictEqual(result, expected, "Trailing inline DocString fence should be split and indented consistently");
+    });
+
     test('DocString: Should handle an empty DocString block', () => {
         const input =
             `Given a payload

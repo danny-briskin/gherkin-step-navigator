@@ -17,7 +17,7 @@ export interface GherkinKeywords {
 interface LineContext {
     lineIndex: number;
     text: string;
-    type: 'feature' | 'element' | 'step' | 'table' | 'comment' | 'table-comment' | 'tag' | 'empty' | 'docstring' | 'docstring-content';
+    type: 'feature' | 'element' | 'step' | 'table' | 'comment' | 'table-comment' | 'tag' | 'empty' | 'docstring' | 'docstring-content' | 'docstring-inline';
     indent: number;
 }
 
@@ -83,7 +83,7 @@ export class GherkinFormatter {
             const rawLine = document.lineAt(i).text;
             const trimmed = rawLine.trim();
 
-            if (this.isDocstringDelimiter(trimmed)) {
+            if (this.isDocstringDelimiter(trimmed) || this.isInlineDocstringOpening(trimmed)) {
                 i = this.scanDocstringBlock(document, i, trimmed, indent, contextMap);
                 continue;
             }
@@ -112,20 +112,33 @@ export class GherkinFormatter {
         contextMap: LineContext[]
     ): number {
         const delimiter = openTrimmed.startsWith('```') ? '```' : '"""';
+        const inlineContent = this.getInlineDocstringContent(openTrimmed, delimiter);
 
         // Collect raw content lines up to (not including) the matching closing delimiter.
         const contentLines: string[] = [];
         let closeIndex = -1;
+        let inlineCloseContent = '';
         for (let j = openIndex + 1; j < document.lineCount; j++) {
             const candidate = document.lineAt(j).text;
             if (candidate.trim() === delimiter) {
                 closeIndex = j;
                 break;
             }
+            const trailingContent = this.getInlineDocstringClosingContent(candidate.trim(), delimiter);
+            if (trailingContent !== null) {
+                closeIndex = j;
+                inlineCloseContent = trailingContent;
+                break;
+            }
             contentLines.push(candidate);
         }
 
-        contextMap.push({ lineIndex: openIndex, text: openTrimmed, type: 'docstring', indent: indent.DOCSTRING });
+        contextMap.push({
+            lineIndex: openIndex,
+            text: inlineContent ? `${delimiter}\n${inlineContent}` : openTrimmed,
+            type: inlineContent ? 'docstring-inline' : 'docstring',
+            indent: indent.DOCSTRING
+        });
 
         contentLines.forEach((rawLine, offset) => {
             const lineIndex = openIndex + 1 + offset;
@@ -139,6 +152,16 @@ export class GherkinFormatter {
                 indent: trimmedLine === '' ? 0 : indent.DOCSTRING
             });
         });
+
+        if (inlineCloseContent) {
+            contextMap.push({
+                lineIndex: closeIndex,
+                text: `${inlineCloseContent}\n${delimiter}`,
+                type: 'docstring-inline',
+                indent: indent.DOCSTRING
+            });
+            return closeIndex;
+        }
 
         if (closeIndex === -1) {
             // Unterminated DocString: nothing left to close, stop at the end of the document.
@@ -155,6 +178,21 @@ export class GherkinFormatter {
      */
     private static isDocstringDelimiter(trimmed: string): boolean {
         return trimmed === '"""' || /^"""\S+$/.test(trimmed) || trimmed === '```' || /^```\S+$/.test(trimmed);
+    }
+
+    private static isInlineDocstringOpening(trimmed: string): boolean {
+        return /^"""\s+\S/.test(trimmed) || /^```\s+\S/.test(trimmed);
+    }
+
+    private static getInlineDocstringContent(trimmed: string, delimiter: string): string {
+        if (!this.isInlineDocstringOpening(trimmed)) return '';
+        return trimmed.slice(delimiter.length).trim();
+    }
+
+    private static getInlineDocstringClosingContent(trimmed: string, delimiter: string): string | null {
+        const suffix = new RegExp(`\\s+${delimiter.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')}$`);
+        if (!suffix.test(trimmed)) return null;
+        return trimmed.slice(0, trimmed.length - delimiter.length).trim();
     }
 
     /**
@@ -179,6 +217,8 @@ export class GherkinFormatter {
                 } else if (current.type === 'element') {
                     newIndent = indent.ELEMENT;
                 } else if (current.type === 'docstring') {
+                    newIndent = indent.DOCSTRING;
+                } else if (current.type === 'docstring-inline') {
                     newIndent = indent.DOCSTRING;
                 } else if (current.type === 'docstring-content') {
                     // Indentation was already computed during the scan pass to preserve relative nesting
@@ -300,7 +340,9 @@ export class GherkinFormatter {
                 }
 
                 // Construct the formatted line using calculated indentation
-                const formatted = " ".repeat(ctx.indent) + (ctx.type === 'table' ? ctx.text.trimEnd() : ctx.text.trim());
+                const formatted = ctx.type === 'docstring-inline'
+                    ? " ".repeat(ctx.indent) + ctx.text.split('\n').map(line => line.trim()).join(`\n${" ".repeat(ctx.indent)}`)
+                    : " ".repeat(ctx.indent) + (ctx.type === 'table' ? ctx.text.trimEnd() : ctx.text.trim());
 
                 // Only generate an edit if the formatted line differs from the original
                 return formatted !== originalLine.text
