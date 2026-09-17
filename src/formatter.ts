@@ -17,7 +17,7 @@ export interface GherkinKeywords {
 interface LineContext {
     lineIndex: number;
     text: string;
-    type: 'feature' | 'element' | 'step' | 'table' | 'comment' | 'table-comment' | 'tag' | 'empty';
+    type: 'feature' | 'element' | 'step' | 'table' | 'comment' | 'table-comment' | 'tag' | 'empty' | 'docstring' | 'docstring-content' | 'docstring-inline';
     indent: number;
 }
 
@@ -73,15 +73,126 @@ export class GherkinFormatter {
 
     /**
      * Iterates through the document to create a metadata map of all lines.
+     * Tracks DocString state (""" or ```) so its contents are never reclassified
+     * as comments/tags/tables and are indented consistently with the rest of the formatter.
      */
     private static scanDocument(document: vscode.TextDocument, keywords: GherkinKeywords, indent: Indent): LineContext[] {
-        return Array.from({ length: document.lineCount }, (_, i) => {
+        const contextMap: LineContext[] = [];
+
+        for (let i = 0; i < document.lineCount; i++) {
             const rawLine = document.lineAt(i).text;
+            const trimmed = rawLine.trim();
+
+            if (this.isDocstringDelimiter(trimmed) || this.isInlineDocstringOpening(trimmed)) {
+                i = this.scanDocstringBlock(document, i, trimmed, indent, contextMap);
+                continue;
+            }
+
             const ctx = this.identifyLine(i, rawLine, keywords, indent);
             // Default indent to 0 for empty lines, -1 (to be resolved) for others
             ctx.indent = ctx.type === 'empty' ? 0 : -1;
-            return ctx;
+            contextMap.push(ctx);
+        }
+
+        return contextMap;
+    }
+
+    /**
+     * Scans a full DocString block (opening delimiter through matching closing delimiter).
+     * All non-blank content lines are indented to the same fixed DOCSTRING level (like every
+     * other construct in this formatter), so the whole block always has one consistent left
+     * margin regardless of how raggedly the original content was typed.
+     * Returns the index of the closing delimiter line (or the last line if unterminated).
+     */
+    private static scanDocstringBlock(
+        document: vscode.TextDocument,
+        openIndex: number,
+        openTrimmed: string,
+        indent: Indent,
+        contextMap: LineContext[]
+    ): number {
+        const delimiter = openTrimmed.startsWith('```') ? '```' : '"""';
+        const inlineContent = this.getInlineDocstringContent(openTrimmed, delimiter);
+
+        // Collect raw content lines up to (not including) the matching closing delimiter.
+        const contentLines: string[] = [];
+        let closeIndex = -1;
+        let inlineCloseContent = '';
+        for (let j = openIndex + 1; j < document.lineCount; j++) {
+            const candidate = document.lineAt(j).text;
+            if (candidate.trim() === delimiter) {
+                closeIndex = j;
+                break;
+            }
+            const trailingContent = this.getInlineDocstringClosingContent(candidate.trim(), delimiter);
+            if (trailingContent !== null) {
+                closeIndex = j;
+                inlineCloseContent = trailingContent;
+                break;
+            }
+            contentLines.push(candidate);
+        }
+
+        contextMap.push({
+            lineIndex: openIndex,
+            text: inlineContent ? `${delimiter}\n${inlineContent}` : openTrimmed,
+            type: inlineContent ? 'docstring-inline' : 'docstring',
+            indent: indent.DOCSTRING
         });
+
+        contentLines.forEach((rawLine, offset) => {
+            const lineIndex = openIndex + 1 + offset;
+            const trimmedLine = rawLine.trim();
+            // Blank content lines stay truly empty rather than padded with indentation-only whitespace;
+            // every other content line gets the same fixed DOCSTRING indent for a consistent left margin.
+            contextMap.push({
+                lineIndex,
+                text: trimmedLine,
+                type: 'docstring-content',
+                indent: trimmedLine === '' ? 0 : indent.DOCSTRING
+            });
+        });
+
+        if (inlineCloseContent) {
+            contextMap.push({
+                lineIndex: closeIndex,
+                text: `${inlineCloseContent}\n${delimiter}`,
+                type: 'docstring-inline',
+                indent: indent.DOCSTRING
+            });
+            return closeIndex;
+        }
+
+        if (closeIndex === -1) {
+            // Unterminated DocString: nothing left to close, stop at the end of the document.
+            return document.lineCount - 1;
+        }
+
+        contextMap.push({ lineIndex: closeIndex, text: delimiter, type: 'docstring', indent: indent.DOCSTRING });
+        return closeIndex;
+    }
+
+    /**
+     * Checks whether a trimmed line opens a DocString block: bare """/``` or with an optional
+     * content-type suffix (e.g. """markdown, ```json). Closing delimiters are always bare.
+     */
+    private static isDocstringDelimiter(trimmed: string): boolean {
+        return trimmed === '"""' || /^"""\S+$/.test(trimmed) || trimmed === '```' || /^```\S+$/.test(trimmed);
+    }
+
+    private static isInlineDocstringOpening(trimmed: string): boolean {
+        return /^"""\s+\S/.test(trimmed) || /^```\s+\S/.test(trimmed);
+    }
+
+    private static getInlineDocstringContent(trimmed: string, delimiter: string): string {
+        if (!this.isInlineDocstringOpening(trimmed)) return '';
+        return trimmed.slice(delimiter.length).trim();
+    }
+
+    private static getInlineDocstringClosingContent(trimmed: string, delimiter: string): string | null {
+        const suffix = new RegExp(`\\s+${delimiter.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')}$`);
+        if (!suffix.test(trimmed)) return null;
+        return trimmed.slice(0, trimmed.length - delimiter.length).trim();
     }
 
     /**
@@ -105,6 +216,13 @@ export class GherkinFormatter {
                     newIndent = indent.TABLE_COMMENT;
                 } else if (current.type === 'element') {
                     newIndent = indent.ELEMENT;
+                } else if (current.type === 'docstring') {
+                    newIndent = indent.DOCSTRING;
+                } else if (current.type === 'docstring-inline') {
+                    newIndent = indent.DOCSTRING;
+                } else if (current.type === 'docstring-content') {
+                    // Indentation was already computed during the scan pass to preserve relative nesting
+                    newIndent = current.indent;
                 } else if (current.type === 'tag') {
                     // Tags should inherit the indentation of the next meaningful line (Scenario/Feature)
                     const next = contextMap.slice(i + 1).find(lc => lc.type !== 'empty');
@@ -222,7 +340,9 @@ export class GherkinFormatter {
                 }
 
                 // Construct the formatted line using calculated indentation
-                const formatted = " ".repeat(ctx.indent) + (ctx.type === 'table' ? ctx.text.trimEnd() : ctx.text.trim());
+                const formatted = ctx.type === 'docstring-inline'
+                    ? " ".repeat(ctx.indent) + ctx.text.split('\n').map(line => line.trim()).join(`\n${" ".repeat(ctx.indent)}`)
+                    : " ".repeat(ctx.indent) + (ctx.type === 'table' ? ctx.text.trimEnd() : ctx.text.trim());
 
                 // Only generate an edit if the formatted line differs from the original
                 return formatted !== originalLine.text

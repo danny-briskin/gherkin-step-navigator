@@ -1,9 +1,12 @@
 import * as assert from 'assert';
-import * as vscode from 'vscode';
 import * as path from 'path';
-import { StepMatcher } from '../../matcher';
+import * as vscode from 'vscode';
 
 suite('Integration & Edge Case Test Suite', () => {
+
+    suiteTeardown(async () => {
+        await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+    });
 
     test('Regex Safety: Should not crash with complex grammar patterns', () => {
         // Simulates the "Unmatched parenthesis" issue faced with complex tmLanguage patterns

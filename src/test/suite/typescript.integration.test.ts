@@ -20,4 +20,5 @@ test('TypeScript Integration: Should find defineStep() in .ts files', async () =
 
     assert.ok(locs && locs.length > 0, 'TypeScript step definition not found');
     assert.ok(locs[0].uri.fsPath.endsWith('.ts'));
+    await vscode.commands.executeCommand('workbench.action.closeAllEditors');
 });

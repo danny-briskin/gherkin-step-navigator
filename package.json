@@ -3,7 +3,7 @@
   "displayName": "Gherkin Step Navigator",
   "description": "Navigate from Gherkin feature steps to code.",
   "icon": "icon.png",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "publisher": "DannyBriskin",
   "author": {
     "name": "Danny Briskin"
@@ -120,7 +120,7 @@
           "default": 6,
           "minimum": 0,
           "maximum": 16,
-          "description": "Spaces before Documentation lines."
+          "description": "Spaces before Documentation lines (opening/closing \"\"\" or ``` delimiters; content lines preserve relative nesting)."
         },
         "gherkinStepNavigator.indent.tag": {
           "type": "integer",

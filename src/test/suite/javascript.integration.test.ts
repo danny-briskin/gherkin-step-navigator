@@ -20,4 +20,5 @@ test('JavaScript Integration: Should find Given() in .js files', async () => {
 
     assert.ok(locs && locs.length > 0, 'JavaScript step definition not found');
     assert.ok(locs[0].uri.fsPath.endsWith('.js'));
+    await vscode.commands.executeCommand('workbench.action.closeAllEditors');
 });
