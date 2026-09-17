@@ -1,8 +1,36 @@
+import * as fs from 'fs';
+import { glob } from 'glob';
 import * as path from 'path';
 import Mocha = require('mocha');
-import { glob } from 'glob';
+
+const testLogPath = path.resolve(__dirname, '../../../.vscode-test-logs/extension-test.log');
+
+function writeTestLog(message: string, error?: unknown): void {
+    try {
+        fs.mkdirSync(path.dirname(testLogPath), { recursive: true });
+        const detail = error instanceof Error ? `${error.stack || error.message}` : String(error ?? '');
+        fs.appendFileSync(testLogPath, `[${new Date().toISOString()}] ${message}${detail ? `\n${detail}` : ''}\n`);
+    } catch {
+        // Logging must never interfere with the test host.
+    }
+}
+
+function isExpectedShutdownCancellation(reason: unknown): boolean {
+    return reason instanceof Error && reason.message === 'Canceled';
+}
+
+process.on('uncaughtException', error => {
+    writeTestLog('uncaughtException', error);
+});
+
+process.on('unhandledRejection', reason => {
+    if (isExpectedShutdownCancellation(reason)) return;
+    writeTestLog('unhandledRejection', reason);
+});
 
 export function run(): Promise<void> {
+    writeTestLog('test host started');
+
     // Create the mocha instance
     const mocha = new Mocha({
         ui: 'tdd',
@@ -22,6 +50,7 @@ export function run(): Promise<void> {
                 try {
                     // Run the mocha test
                     mocha.run(failures => {
+                        writeTestLog(`test host completed with ${failures} failure(s)`);
                         if (failures > 0) {
                             e(new Error(`${failures} tests failed.`));
                         } else {
@@ -29,11 +58,13 @@ export function run(): Promise<void> {
                         }
                     });
                 } catch (err) {
+                    writeTestLog('Mocha runner threw', err);
                     console.error(err);
                     e(err);
                 }
             })
             .catch(err => {
+                writeTestLog('test discovery failed', err);
                 return e(err);
             });
     });
