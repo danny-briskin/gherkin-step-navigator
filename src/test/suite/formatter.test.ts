@@ -480,6 +480,32 @@ an automation user
         assert.strictEqual(result, expected, "Inline DocString content should be split and indented consistently");
     });
 
+    test('DocString: Should recognize inline content attached directly to the opening delimiter', () => {
+        const input =
+            `Feature: Workflow
+"""As an automation user
+I want to run tests
+So that I can validate the workflow
+"""
+Background:
+Given a step`;
+
+        const expected =
+            `Feature: Workflow
+      """
+      As an automation user
+      I want to run tests
+      So that I can validate the workflow
+      """
+  Background:
+    Given a step`;
+
+        const edits = GherkinFormatter.format(mockDocument(input), keywords);
+        const result = applyEdits(input, edits);
+
+        assert.strictEqual(result, expected, "Inline DocString content should not swallow the following Background");
+    });
+
     test('DocString: Should split a trailing inline closing fence onto its own line', () => {
         const input =
             `Given a payload

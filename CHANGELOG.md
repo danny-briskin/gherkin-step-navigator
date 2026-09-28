@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.2
+### Fixes & Improvements
+- Inline DocString content immediately following a triple-quote delimiter is now recognized correctly, so the closing delimiter no longer swallows the following Gherkin element during formatting.
+- Tags before the first scenario are now syntax-highlighted as tags instead of inheriting feature-description coloring.
+
 ## 1.1.1
 ### New Features
 - DocString-aware formatting: The formatter now detects DocString blocks (`"""` and  ` ``` `, including content-type annotations like `"""markdown` or ` ```json `) and indents their opening/closing delimiters using `gherkinStepNavigator.indent.docstring`, while re-indenting content lines by the same shift so relative/nested indentation inside the block is preserved.
