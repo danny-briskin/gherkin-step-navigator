@@ -181,7 +181,8 @@ export class GherkinFormatter {
     }
 
     private static isInlineDocstringOpening(trimmed: string): boolean {
-        return /^"""\s+\S/.test(trimmed) || /^```\s+\S/.test(trimmed);
+        return /^"""\s+\S/.test(trimmed) || /^```\s+\S/.test(trimmed) ||
+            /^(?:"""|```)[^\s]+\s+\S/.test(trimmed);
     }
 
     private static getInlineDocstringContent(trimmed: string, delimiter: string): string {
